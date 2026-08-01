@@ -364,6 +364,18 @@
   .warnbox{background:rgba(242,176,58,.13); border-radius:12px; padding:12px 14px;
     margin-top:14px; font-size:12.5px; color:var(--warn); line-height:1.6;}
 
+  /* ── 데이터 백업 ──────────────────────────────────── */
+  .drow{display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+    padding:13px 15px; min-height:54px; border-top:1px solid var(--sep);}
+  .card > .drow:first-child{border-top:none;}
+  .drow .l{flex:1; min-width:0;}
+  .drow .nm{font-size:15px; font-weight:500; letter-spacing:-.012em;}
+  .drow .mt{font:400 11.5px/1.4 var(--num); color:var(--lb3); margin-top:2px;}
+  .drow .go{margin-left:auto; font-size:14px; font-weight:500; color:var(--accent);
+    flex:0 0 auto;}
+  .dmsg{font-size:12px; line-height:1.6; color:var(--accent); padding:9px 4px 0;}
+  .dmsg[data-w="1"]{color:var(--warn);}
+
   .exlink, .auxlink{display:inline-flex; align-items:center; gap:5px;}
   .yt{width:15px; height:15px; color:var(--accent); flex:0 0 auto;}
   .auxlink .yt{width:13px; height:13px;}
@@ -487,7 +499,7 @@
 
   var S={ excl:[], sessions:[], tab:"today", dayId:"d1",
           edit:null, draft:{w:20,r:8}, rest:{on:false,left:0,total:0,fin:false,ex:null},
-          routine:null, gaps:[], acc:{}, focus:null, doneOpen:false,
+          routine:null, gaps:[], acc:{}, focus:null, doneOpen:false, msg:null,
           ready:false, resetScroll:false };
   var root=document.getElementById("root");
   var tick=null, saveT=null;
@@ -722,12 +734,80 @@
     s.t1=t;
   }
 
+  var KEEP=300;   // localStorage에 남기는 최근 세션 수
   function save(){
     clearTimeout(saveT);
     saveT=setTimeout(function(){
       set("gym5:excl", JSON.stringify(S.excl));
-      set("gym5:sessions", JSON.stringify(S.sessions.slice(-300)));
+      set("gym5:sessions", JSON.stringify(S.sessions.slice(-KEEP)));
     },250);
+  }
+
+  // ── 백업 ─────────────────────────────────────────────
+  // 기록은 이 브라우저의 localStorage에만 있다. 브라우저 데이터를 지우거나
+  // 폰을 바꾸면 증량 이력이 통째로 날아가므로, 파일로 빼고 넣을 수 있어야 한다.
+  function exportData(){
+    var payload={ app:"set-logger", v:1, exportedAt:new Date().toISOString(),
+      excl:S.excl, sessions:S.sessions };
+    var url, a;
+    try{
+      url=URL.createObjectURL(new Blob([JSON.stringify(payload)],{type:"application/json"}));
+      a=document.createElement("a");
+      a.href=url; a.download="workout-"+todayKey()+".json";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(url); },1000);
+    }catch(e){
+      S.msg={t:"이 브라우저에서 파일 저장이 막혔다.", w:1}; return render();
+    }
+    S.msg={t:"세션 "+S.sessions.length+"개를 workout-"+todayKey()+".json 으로 내보냈다.", w:0};
+    render();
+  }
+  function pickImport(){
+    var inp=document.createElement("input");
+    inp.type="file"; inp.accept="application/json,.json";
+    inp.style.cssText="position:fixed;left:-9999px;top:0";
+    document.body.appendChild(inp);
+    inp.addEventListener("change", function(){
+      if(inp.files && inp.files[0]) importData(inp.files[0]);
+      inp.remove();
+    });
+    inp.click();
+  }
+  function importData(file){
+    var fr=new FileReader();
+    fr.onerror=function(){ S.msg={t:"파일을 읽지 못했다.", w:1}; render(); };
+    fr.onload=function(){
+      var d;
+      try{ d=JSON.parse(fr.result); }
+      catch(e){ S.msg={t:"JSON을 읽지 못했다. 내보내기로 만든 파일이 맞는지 확인해라.", w:1};
+        return render(); }
+      if(!d || !Array.isArray(d.sessions)){
+        S.msg={t:"이 앱의 기록 파일이 아니다.", w:1}; return render(); }
+      // 같은 날짜 + 같은 Day 는 가져온 것으로 교체, 나머지는 합친다
+      var idx={};
+      S.sessions.forEach(function(s,i){ idx[s.date+"|"+s.dayId]=i; });
+      var add=0, rep=0, skip=0;
+      d.sessions.forEach(function(s){
+        if(!s || typeof s.date!=="string" || typeof s.dayId!=="string"
+           || !s.e || typeof s.e!=="object"){ skip++; return; }
+        var k=s.date+"|"+s.dayId;
+        if(idx[k]!==undefined){ S.sessions[idx[k]]=s; rep++; }
+        else { idx[k]=S.sessions.length; S.sessions.push(s); add++; }
+      });
+      S.sessions.sort(function(a,b){ return a.date<b.date?-1:a.date>b.date?1:0; });
+      if(Array.isArray(d.excl))
+        S.excl=d.excl.filter(function(x){ return typeof x==="string"; });
+      rebuild(); save();
+      // 오늘 기록이 딸려 왔으면 그 Day 로 맞춰 준다
+      var k2=todayKey(), td=S.sessions.filter(function(x){ return x.date===k2; });
+      if(td.length){ S.dayId=td[td.length-1].dayId; S.focus=null; S.doneOpen=false; }
+      var t="새 세션 "+add+"개 추가, "+rep+"개 갱신.";
+      if(skip) t+=" 형식이 안 맞는 "+skip+"개는 건너뛰었다.";
+      if(S.sessions.length>KEEP) t+=" 저장은 최근 "+KEEP+"세션까지만 유지된다.";
+      S.msg={t:t, w:0};
+      render();
+    };
+    fr.readAsText(file);
   }
 
   // ── rest timer ───────────────────────────────────────
@@ -1292,7 +1372,22 @@
       });
     });
 
-    h+='<div class="note"><b>스위치를 끄면 그 종목은 추천에서 빠진다.</b> 루틴은 즉시 다시 짜여서 같은 부위의 다음 순위 종목이 '
+    var nS=S.sessions.length, nX=S.excl.length;
+    h+='<div class="ghd">데이터<span>이 폰에만 저장된다</span></div>'
+      +'<div class="card" style="margin-top:0">'
+      +'<button class="drow" data-act="export"><div class="l">'
+      +'<div class="nm">기록 내보내기</div>'
+      +'<div class="mt">세션 '+nS+'개 · 제외 '+nX+'개를 JSON 파일로</div></div>'
+      +'<span class="go">저장</span></button>'
+      +'<button class="drow" data-act="import"><div class="l">'
+      +'<div class="nm">기록 가져오기</div>'
+      +'<div class="mt">같은 날짜·Day는 덮어쓰고 나머지는 합친다</div></div>'
+      +'<span class="go">선택</span></button></div>';
+    if(S.msg) h+='<div class="dmsg" data-w="'+(S.msg.w?1:0)+'">'+esc(S.msg.t)+'</div>';
+    h+='<div class="note"><b>기록은 이 브라우저에만 남는다.</b> 서버도 계정도 없어서, 브라우저 데이터를 지우거나 '
+      +'폰을 바꾸면 그대로 사라진다. 처방은 과거 기록에서 나오므로 잃으면 앱이 처음으로 돌아간다. '
+      +'가끔 내보내서 파일을 다른 데 두는 편이 안전하다.<br><br>'
+      +'<b>스위치를 끄면 그 종목은 추천에서 빠진다.</b> 루틴은 즉시 다시 짜여서 같은 부위의 다음 순위 종목이 '
       +'그 자리를 대신한다. 기구가 없거나, 자세가 안 나오거나, 통증이 있는 종목을 끄면 된다.<br><br>'
       +'세트 수, 목표 횟수, 휴식, 증량 단위는 목표(근비대 + 체지방)에 맞춰 자동으로 정해진다. '
       +'<b>예비</b>는 라이브러리에는 있지만 이번 5일 편성에는 안 들어간 종목이다. 앞 순위 종목을 끄면 올라온다.<br><br>'
@@ -1388,7 +1483,10 @@
   root.addEventListener("click", function(ev){
     var t=ev.target.closest("[data-act]"); if(!t) return;
     var a=t.dataset.act;
-    if(a==="tab"){ S.tab=t.dataset.id; S.edit=null; S.resetScroll=true; return render(); }
+    if(a==="tab"){ S.tab=t.dataset.id; S.edit=null; S.msg=null; S.resetScroll=true;
+      return render(); }
+    if(a==="export") return exportData();
+    if(a==="import") return pickImport();
     if(a==="day"){ S.dayId=t.dataset.id; S.edit=null; S.focus=null; S.doneOpen=false;
       S.tab="today"; S.resetScroll=true; return render(); }
     if(a==="focus"){ S.focus=t.dataset.ex; S.edit=null; return render(); }
