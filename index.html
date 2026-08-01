@@ -108,6 +108,16 @@
   .hero .left{font:600 12.5px/1 var(--num); color:var(--lb2); margin-top:8px;}
   .meta{font:400 11.5px/1.55 var(--num); color:var(--lb3); padding:0 15px 8px;}
   .meta b{font-weight:400; color:var(--lb2);}
+  .meta.act{display:flex; align-items:center; gap:8px; min-height:44px; padding:0 8px 4px 15px;}
+  .meta .mtx{flex:1; min-width:0;}
+  /* 액센트는 누를 수 있는 것에만 — 되돌리기는 버튼, "○○ 대신"은 설명이다 */
+  .meta .from{font-weight:600; color:var(--lb2);}
+  .meta .undo{font:400 11.5px/1.55 var(--num); color:var(--accent); padding:2px 6px;}
+  .meta .swap{display:inline-flex; align-items:center; gap:5px; flex:0 0 auto;
+    font:500 13px/1 var(--sf); color:var(--accent); letter-spacing:-.01em;
+    padding:14px 8px 14px 12px;}
+  .meta .swap svg{width:16px; height:16px;}
+  .meta .swap em{font-style:normal; font-family:var(--num); font-size:11px; color:var(--lb3);}
 
   /* ── 세트 행 · 체크박스가 이 앱의 주 조작 ── */
   .srow{display:flex; align-items:center; gap:14px; padding:5px 12px; min-height:54px;
@@ -509,7 +519,7 @@
     var used={}, g=G(), gaps=[];
     var days=TPL.map(function(t){
       var ex=[];
-      t.slots.forEach(function(sl){
+      t.slots.forEach(function(sl,si){
         var mg=sl[0], ty=sl[1], n=sl[2];
         var pool=(LIB[mg]||[]).filter(function(x){
           return x.ty===ty && S.excl.indexOf(x.n)<0; });
@@ -518,7 +528,7 @@
         if(!pick) pick=pool[0];
         if(!pick){ gaps.push(t.nm+" · "+mg+" "+(ty==="cmp"?"컴파운드":ty==="iso"?"고립":"컨디셔닝")); return; }
         used[pick.n]=1;
-        ex.push({ id:pick.n, nm:pick.n, ty:ty, mg:mg, inc:pick.inc,
+        ex.push({ id:pick.n, nm:pick.n, ty:ty, mg:mg, inc:pick.inc, slot:si,
           sets: ty==="con"?1:n,
           rep:  ty==="con"?(pick.rep||"10-14"):g.rep[ty],
           rest: ty==="con"?0:g.rest[ty] });
@@ -544,6 +554,9 @@
   function rnd(v,inc){ return inc>0?Math.round(Math.round(v/inc)*inc*100)/100:Math.round(v); }
   function CHK(c){ return '<svg viewBox="0 0 24 24" fill="none"><path d="M5 12.6l4.6 4.6L19.2 7.4" '
     +'stroke="'+(c||"#08131A")+'" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
+  function SWAP(){ return '<svg viewBox="0 0 24 24" fill="none">'
+    +'<path d="M4 8.5h14.5l-3.6-3.8M20 15.5H5.5l3.6 3.8" stroke="currentColor" '
+    +'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'; }
   function CHEV(cls){ return '<svg class="'+(cls||"chev")+'" viewBox="0 0 24 24" fill="none">'
     +'<path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" '
     +'stroke-linejoin="round"/></svg>'; }
@@ -576,7 +589,58 @@
   function e1rm(s){ return s?s.w*(1+s.r/30):0; }
   function volOf(a){ return dn(a).reduce(function(t,s){ return t+s.w*s.r; },0); }
   function metricOf(a){ return volOf(a); }
-  function day(){ return S.routine.days.find(function(d){ return d.id===S.dayId; })||S.routine.days[0]; }
+  // ── 종목 대체 ────────────────────────────────────────
+  // 기구가 고장났거나 남이 쓰고 있을 때 같은 부위의 다른 종목으로 갈아탄다.
+  // 오늘 이 세션에만 적용되고(목록 탭의 스위치가 영구 제외), 세트 구성은 새 종목을 따른다.
+  var LIBIDX=null;
+  function libInfo(nm){
+    if(!LIBIDX){ LIBIDX={};
+      Object.keys(LIB).forEach(function(mg){ LIB[mg].forEach(function(x){
+        LIBIDX[x.n]={mg:mg, ty:x.ty, inc:x.inc, rep:x.rep}; }); }); }
+    return LIBIDX[nm]||null;
+  }
+  function mkEx(name, slot, origSets, origTy){
+    var li=libInfo(name); if(!li) return null;
+    var g=G(), ty=li.ty;
+    return { id:name, nm:name, ty:ty, mg:li.mg, inc:li.inc, slot:slot,
+      // 유형이 그대로면 슬롯의 세트 수를 지키고, 컴파운드↔고립이 바뀌면 그 유형의 기본값을 쓴다
+      sets: ty==="con"?1:(ty===origTy?origSets:g.sets[ty]),
+      rep:  ty==="con"?(li.rep||"10-14"):g.rep[ty],
+      rest: ty==="con"?0:g.rest[ty] };
+  }
+  function subOf(){ var s=curSession(false); return (s&&s.sw)?s.sw:{}; }
+  function baseDay(){
+    return S.routine.days.find(function(d){ return d.id===S.dayId; })||S.routine.days[0];
+  }
+  function day(){
+    var base=baseDay(), m=subOf();
+    if(!Object.keys(m).length) return base;
+    var ex=[];
+    base.ex.forEach(function(e){
+      var rep = m[e.slot] ? mkEx(m[e.slot], e.slot, e.sets, e.ty) : null;
+      if(!rep){ ex.push(e); return; }
+      // 세트를 이미 찍고 갈아탔으면 원래 종목도 남긴다 — 실제로 한 운동이다
+      var got=dn(rawSets(e.id)).length;
+      if(got) ex.push({id:e.id, nm:e.nm, ty:e.ty, mg:e.mg, inc:e.inc, slot:e.slot,
+        sets:got, rep:e.rep, rest:e.rest, out:1, from:null});
+      rep.from=e.id;
+      ex.push(rep);
+    });
+    return {id:base.id, nm:base.nm, sub:base.sub, wu:base.wu, cl:base.cl, ex:ex};
+  }
+  // 이 슬롯이 돌아가며 고를 수 있는 종목 이름들. 원래 종목이 [0]이고 같은 유형이 먼저 온다.
+  // 고정된 순서라서 교체를 계속 누르면 한 바퀴 돌아 원래 종목으로 돌아온다.
+  function slotOptions(slot){
+    var base=baseDay().ex.find(function(x){ return x.slot===slot; });
+    if(!base) return [];
+    var used={};
+    day().ex.forEach(function(x){ if(x.slot!==slot) used[x.id]=1; });   // 다른 슬롯과 겹치지 않게
+    var pool=(LIB[base.mg]||[]).filter(function(x){
+      return x.n!==base.id && S.excl.indexOf(x.n)<0 && !used[x.n]; });
+    return [base.id]
+      .concat(pool.filter(function(x){ return x.ty===base.ty; }).map(function(x){ return x.n; }))
+      .concat(pool.filter(function(x){ return x.ty!==base.ty; }).map(function(x){ return x.n; }));
+  }
   // 마지막으로 기록한 Day 의 다음 Day. 며칠을 쉬었든 프로그램 순서대로 이어지고,
   // Day 5 다음은 Day 1 로 돈다. 다르게 하고 싶으면 세그먼트로 바꾸면 된다.
   function nextDayId(){
@@ -590,8 +654,17 @@
     if(i<0) return S.routine.days[0].id;
     return S.routine.days[(i+1)%S.routine.days.length].id;
   }
-  function findEx(id){ var f=null;
-    S.routine.days.forEach(function(d){ d.ex.forEach(function(e){ if(e.id===id) f=e; }); }); return f; }
+  function findEx(id){
+    var f=null;
+    // 오늘 대체해 넣은 종목이 먼저, 그다음 기본 루틴
+    day().ex.forEach(function(e){ if(e.id===id) f=e; });
+    if(f) return f;
+    S.routine.days.forEach(function(d){ d.ex.forEach(function(e){ if(e.id===id) f=e; }); });
+    if(f) return f;
+    // 루틴에 없어도 라이브러리에 있으면 부위·유형을 알 수 있다. 제외했거나 대체로만
+    // 쓴 종목의 지난 기록이 진행·기록 탭에서 사라지지 않게 한다.
+    return mkEx(id, -1, 0, null);
+  }
   function parseRep(r){ var m=String(r).match(/(\d+)\s*[-~]\s*(\d+)/); if(m) return {lo:+m[1],hi:+m[2]};
     var n=String(r).match(/(\d+)/); return n?{lo:+n[1],hi:+n[1]}:{lo:8,hi:12}; }
   function history(id){ var k=todayKey();
@@ -903,9 +976,9 @@
     var isCon=e.ty==="con", U=isCon?"분":"kg";
     var nx=firstOpenSet(e);
 
+    var nAlt = (e.out || e.slot<0) ? 0 : Math.max(0, slotOptions(e.slot).length-1);
     var h='<div class="card now"><div class="card-hd"><span class="t">'+exLink(e.nm)+'</span>'
-      +'<span class="tag">'+esc(isCon?"컨디셔닝":e.mg)+'</span>'
-      +'<span class="n">'+(isCon?esc(e.rep)+"분":e.sets+" × "+esc(e.rep)+" · "+exMin(e)+"분")+'</span></div>';
+      +'<span class="tag">'+esc(isCon?"컨디셔닝":e.mg)+'</span></div>';
 
     // hero
     var tag, big, wtag=0, hint="";
@@ -931,6 +1004,7 @@
 
     // 지난 기록 + 램프업을 한 줄 메타로 합쳐 처방 무게와의 크기 차이를 4배로 벌린다
     var mt=[];
+    mt.push(isCon ? esc(e.rep)+"분" : e.sets+" × "+esc(e.rep)+" · "+exMin(e)+"분");
     if(pTop && !isCon){
       mt.push('지난 '+shortK(lastS.date)+' · '+daysAgo(lastS.date)+'일 전 · 최고 '
         +nn(pTop.w)+'kg × '+pTop.r+(p.stall>=2?' · 정체 '+p.stall+'세션':''));
@@ -938,7 +1012,13 @@
     var rp = complete ? null : ramp(e, p.w);
     if(rp) mt.push('램프업 '+rp.join(' · ')+' kg × 5회');
     if(hint) mt.push(hint);
-    if(mt.length) h+='<div class="meta">'+esc(mt.join("  ·  "))+'</div>';
+    var swapped = e.from ? '<b class="from">'+esc(e.from)+' 대신</b>'
+      +'<button class="undo" data-act="unswap" data-slot="'+e.slot+'">되돌리기</button>' : '';
+    h+='<div class="meta'+(nAlt||swapped?' act':'')+'">'
+      +'<span class="mtx">'+(swapped?swapped+'<br>':'')+esc(mt.join("  ·  "))+'</span>'
+      +(nAlt?'<button class="swap" data-act="swap" data-slot="'+e.slot+'">'+SWAP()
+        +'교체<em>'+nAlt+'</em></button>':'')
+      +'</div>';
 
     for(var i=0;i<e.sets;i++){
       var rec=a[i], on=rec&&rec.d?1:0, pl=planned(e,i);
@@ -1314,15 +1394,21 @@
       if(n>=25) return;
       var dO=S.routine.days.find(function(d){ return d.id===s.dayId; });
       var ns=0, cm=0, lines="";
+      // 루틴 순서를 먼저 쓰되, 대체로 들어온 종목처럼 루틴에 없는 기록도 빠뜨리지 않는다
+      var order=[], seen={};
       S.routine.days.forEach(function(d){ d.ex.forEach(function(e){
-        var a=dn(s.e[e.id]); if(!a.length) return;
-        if(e.ty==="con"){ cm+=a.reduce(function(t,x){ return t+x.w; },0);
-          lines+='<div class="lgl"><b>'+esc(e.nm)+'</b><span>'
+        if(!seen[e.id]){ seen[e.id]=1; order.push(e.id); } }); });
+      Object.keys(s.e).forEach(function(id){ if(!seen[id]){ seen[id]=1; order.push(id); } });
+      order.forEach(function(id){
+        var a=dn(s.e[id]); if(!a.length) return;
+        var e=findEx(id), isCon=e&&e.ty==="con";
+        if(isCon){ cm+=a.reduce(function(t,x){ return t+x.w; },0);
+          lines+='<div class="lgl"><b>'+esc(id)+'</b><span>'
             +a.map(function(x){ return x.w+"분 RPE"+x.r; }).join("  ")+'</span></div>'; return; }
         ns+=a.length;
-        lines+='<div class="lgl"><b>'+esc(e.nm)+'</b><span>'
+        lines+='<div class="lgl"><b>'+esc(id)+'</b><span>'
           +a.map(function(x){ return nn(x.w)+"×"+x.r; }).join("  ")+'</span></div>';
-      }); });
+      });
       if(!lines) return;
       if(!n) h+='<div class="ghd">세션 로그</div>';
       n++;
@@ -1503,6 +1589,24 @@
     if(a==="day"){ S.dayId=t.dataset.id; S.edit=null; S.focus=null; S.doneOpen=false;
       S.tab="today"; S.resetScroll=true; return render(); }
     if(a==="focus"){ S.focus=t.dataset.ex; S.edit=null; return render(); }
+    if(a==="swap"){
+      var sl=+t.dataset.slot;
+      var cur=day().ex.find(function(x){ return x.slot===sl && !x.out; });
+      var opts=slotOptions(sl);
+      if(!cur || opts.length<2) return;
+      var ni=(opts.indexOf(cur.id)+1)%opts.length;   // 한 번 더 누르면 그다음 후보
+      var ss=curSession(true);
+      if(!ss.sw) ss.sw={};
+      if(ni===0) delete ss.sw[sl]; else ss.sw[sl]=opts[ni];
+      S.focus=opts[ni]; S.edit=null; save();
+      return render();
+    }
+    if(a==="unswap"){
+      var sl2=+t.dataset.slot, s2=curSession(false);
+      if(s2 && s2.sw){ delete s2.sw[sl2]; save(); }
+      S.focus=null; S.edit=null;
+      return render();
+    }
     if(a==="opendone"){ S.doneOpen=!S.doneOpen; return render(); }
 
     if(a==="excl"){
