@@ -1,0 +1,18 @@
+{
+  "name": "세트 · 헬스 기록",
+  "short_name": "세트",
+  "description": "웨이트 트레이닝 세트 기록 · 자동 증량 처방 · 부위별 볼륨 추적",
+  "lang": "ko",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0A0B0C",
+  "theme_color": "#0A0B0C",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "./icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
