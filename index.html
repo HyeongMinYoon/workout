@@ -165,6 +165,11 @@
   .stdone{width:100%; margin-top:12px; height:44px; border-radius:11px;
     background:var(--accent); color:var(--ink); font-size:15px; font-weight:600;}
   .stdone:active{opacity:.8;}
+  .stbtns{display:flex; gap:8px; align-items:center;}
+  .stbtns .stdone{flex:1; width:auto;}
+  .stsave{flex:0 0 auto; margin-top:12px; height:44px; padding:0 20px; border-radius:11px;
+    background:var(--card2); font-size:15px; font-weight:600; color:var(--lb1);}
+  .stsave:active{background:var(--card3);}
   .strow .disp{display:block; padding:6px 4px;}
   .strow .disp:active{opacity:.6;}
 
@@ -246,22 +251,24 @@
   .restpill .t{font:600 34px/1 var(--num); font-variant-numeric:tabular-nums;
     letter-spacing:-.03em; min-width:96px;}
   .restpill[data-tall="1"] .t{font-size:52px; letter-spacing:-.04em; min-width:140px;}
-  .restpill .k{font-size:11.5px; color:var(--lb2);}
+  .restpill .k{font-size:11.5px; color:var(--lb2); white-space:nowrap; overflow:hidden;
+    text-overflow:ellipsis;}
   .restpill[data-tall="1"] .k{font:600 11px/1 var(--sf); color:var(--accent);
     letter-spacing:.06em;}
   .restpill .nx{font:600 15px/1.2 var(--num); margin-top:2px;}
   .restpill[data-tall="1"] .nx{font-size:17px; margin-top:5px;}
-  .restpill .p30{margin-left:auto; font-size:13px; font-weight:500; color:var(--accent);
-    padding:8px; flex:0 0 auto;}
-  .restpill[data-tall="1"] .p30{width:52px; height:52px; border-radius:15px; padding:0;
-    background:rgba(90,210,200,.14); font:600 13px/1 var(--num);}
+  .restpill .p30{font-size:13px; font-weight:500; color:var(--accent);
+    padding:8px 10px; flex:0 0 auto; white-space:nowrap;}
+  .restpill[data-tall="1"] .p30{margin-left:auto; width:52px; height:52px; border-radius:15px;
+    padding:0; background:rgba(90,210,200,.14); font:600 13px/1 var(--num);}
   .restpill .r2{display:flex; align-items:center; gap:12px; margin:12px 16px 0;
     padding:11px 0 13px; border-top:1px solid var(--sep);}
   .restpill .r2 .why{font-size:11.5px; color:var(--lb2);}
   .restpill .r2 .m30{margin-left:auto; font-size:13px; font-weight:500; color:var(--accent);
     padding:6px 10px;}
   .restpill .r2 .end{font-size:13px; font-weight:500; color:var(--lb2); padding:6px 4px;}
-  .restpill .endc{font-size:13px; font-weight:500; color:var(--lb2); padding:8px 4px 8px 8px;}
+  .restpill .endc{margin-left:auto; font-size:13px; font-weight:500; color:var(--accent);
+    padding:8px 10px; flex:0 0 auto; white-space:nowrap;}
   .restpill[data-fin="1"] .t{color:var(--accent);}
   .restpill[data-fin="1"] .swp{width:100% !important;}
 
@@ -1213,9 +1220,12 @@
             // 사이클·트레드밀은 분·RPE 만으로는 재현이 안 된다. 저항 레벨을 같이 남긴다.
             +(isCon?stepRow("레벨", "lv", (S.draft.lv===null||S.draft.lv===undefined)?"—":nn(S.draft.lv),
                 "", "기구 저항", 1):"")
-            // 적용 + 체크 + 휴식 시작을 한 탭으로 — 세션당 4~6탭이 줄어든다
-            +'<button class="stdone" data-act="save">'
-            +(on?'적용':'적용하고 휴식 시작')+'</button>';
+            // 휴식 중에 다음 세트 값을 손보는 일이 잦다. 그때 타이머가 처음부터
+            // 다시 도는 것도, 안 한 세트가 완료로 찍히는 것도 곤란하므로 둘을 나눴다.
+            +'<div class="stbtns">'
+            +(on?'':'<button class="stsave" data-act="save">저장</button>')
+            +'<button class="stdone" data-act="'+(on?'save':'saverest')+'">'
+            +(on?'저장':'저장하고 휴식')+'</button></div>';
         }
         h+='</div>';
       }
@@ -1700,9 +1710,10 @@
       +'<span class="t">'+mmss(S.rest.left)+'</span>'
       +'<div style="min-width:0"><div class="k">'+(S.rest.fin?"다음 세트 준비":esc(leftLbl))+'</div>'
       +(nxt?'<div class="nx">'+esc(nxt)+'</div>':'')+'</div>'
-      +'<button class="p30" data-act="plus30">'+(tall?'+30':'+30초')+'</button>'
-      +(tall?'':'<button class="endc" data-act="minus30">−30</button>'
-        +'<button class="endc" data-act="endrest">종료</button>')
+      // 1줄 캡슐은 스테퍼가 열려 있을 때만 나온다. 폭이 모자라므로 종료는 빼고
+      // ±30 만 남긴다 — 스테퍼를 닫으면 2줄 캡슐에 종료가 다시 나온다.
+      +(tall?'':'<button class="endc" data-act="minus30">−30</button>')
+      +'<button class="p30" data-act="plus30">'+(tall?'+30':'+30')+'</button>'
       +'</div>';
     if(tall){
       h+='<div class="r2"><span class="why">'+(why||"세트 사이 휴식")+'</span>'
@@ -1874,7 +1885,7 @@
       if(!nmv) return;
       setGear(t.dataset.ex, nmv); S.gearOpen=null; return render();
     }
-    if(a==="save"){
+    if(a==="save" || a==="saverest"){
       var o=S.edit; if(!o) return;
       var e3=findEx(o.ex), arr3=ensure(e3,o.i);
       arr3[o.i].w=S.draft.w; arr3[o.i].r=S.draft.r;
@@ -1888,9 +1899,10 @@
         }
       }
       var wasOpen=!arr3[o.i].d;
-      S.edit=null; stamp(); save();
-      // 적용 = 기록 + 체크 + 휴식 시작. 탭 하나로 세 동작이 끝난다.
-      if(wasOpen){
+      S.edit=null; S.pad=null; stamp(); save();
+      // 저장하고 휴식 = 기록 + 체크 + 휴식 시작. 그냥 저장은 값만 남기고
+      // 돌고 있는 타이머를 건드리지 않는다.
+      if(a==="saverest" && wasOpen){
         arr3[o.i].d=1; save();
         if(dn(arr3).length>=e3.sets && S.focus===e3.id) S.focus=null;
         return startRest(restOf(e3), e3.id);
