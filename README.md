@@ -24,12 +24,15 @@ python3 -m http.server 8000
 GitHub Pages 같은 https 호스팅에 올린 뒤 브라우저의 "홈 화면에 추가"를 쓰면
 주소 표시줄 없는 standalone 앱으로 뜬다. 헬스장은 지하가 많아 서비스 워커가 셸을 캐시해 둔다.
 
+앱 본체는 **네트워크 우선**이라 새로 배포한 버전이 다음 실행에 바로 뜬다.
+회선이 느리거나 끊겼으면 2.5초 뒤 캐시로 넘어가므로 지하에서도 즉시 열린다.
+
 ## 파일
 
 ```
 index.html              앱 전체 — 마크업 · CSS · 로직
 manifest.webmanifest    PWA 매니페스트
-sw.js                   서비스 워커 (셸 캐시, 고칠 때 CACHE 값을 올린다)
+sw.js                   서비스 워커 (앱 본체는 네트워크 우선, 나머지는 캐시 우선)
 icon.svg, icon-*.png    아이콘
 docs/design-brief.md    UI 리파인 브리프 (요구사항 원문)
 docs/design-decisions.md 무엇을 왜 바꿨는지
