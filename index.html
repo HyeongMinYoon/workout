@@ -530,7 +530,8 @@
     "전완":[ L("리버스 컬","iso",1.25), L("리스트 컬","iso",1.25), L("파머스 워크","iso",2.5) ],
     "대퇴사두":[ L("백스쿼트","cmp",5), L("레그프레스","cmp",5), L("핵스쿼트","cmp",5),
       L("프론트스쿼트","cmp",2.5), L("스미스 스쿼트","cmp",2.5), L("레그 익스텐션","iso",2.5) ],
-    "햄스트링":[ L("루마니안 데드리프트","cmp",5), L("컨벤셔널 데드리프트","cmp",5), L("굿모닝","cmp",2.5),
+    "햄스트링":[ L("케이블 풀스루","cmp",2.5), L("루마니안 데드리프트","cmp",5),
+      L("컨벤셔널 데드리프트","cmp",5), L("굿모닝","cmp",2.5),
       L("레그컬","iso",2.5), L("시티드 레그컬","iso",2.5) ],
     "둔근":[ L("워킹 런지","cmp",2), L("힙 쓰러스트","cmp",5), L("불가리안 스플릿 스쿼트","cmp",2),
       L("스텝업","cmp",2), L("케이블 킥백","iso",1.25), L("힙 어브덕션","iso",5) ],
@@ -539,6 +540,32 @@
       L("플랭크","iso",1.25), L("러시안 트위스트","iso",1.25) ],
     "컨디셔닝":[ L("사이클 인터벌","con",1,"10-14"), L("인클라인 트레드밀","con",1,"12-16"),
       L("로잉 인터벌","con",1,"10-14"), L("스텝밀","con",1,"12-16"), L("스테어 클라이머","con",1,"10-14") ]
+  };
+
+  // 새 종목의 첫 무게를 체중에서 추정하는 계수. 초보자가 8~12회 할 만한 작업 무게 기준이고,
+  // 덤벨 종목은 한 짝 기준이다. 없는 종목(맨몸 등)은 추정하지 않는다.
+  var BW={
+    "벤치프레스":0.65,"인클라인 덤벨프레스":0.22,"인클라인 바벨프레스":0.55,"덤벨 벤치프레스":0.25,
+    "체스트프레스 머신":0.6,"인클라인 체스트프레스 머신":0.5,"딥스":0.9,"펙덱 플라이":0.5,
+    "케이블 크로스오버":0.15,"덤벨 플라이":0.12,
+    "랫풀다운":0.6,"바벨로우":0.45,"시티드 케이블로우":0.6,"원암 덤벨로우":0.25,"T바로우":0.4,
+    "스트레이트암 풀다운":0.25,
+    "오버헤드프레스":0.35,"덤벨 숄더프레스":0.15,"아놀드프레스":0.13,"머신 숄더프레스":0.35,
+    "사이드 레터럴 레이즈":0.08,"케이블 레터럴 레이즈":0.07,"프론트 레이즈":0.08,
+    "페이스풀":0.25,"리어델트 플라이":0.2,"벤트오버 레터럴 레이즈":0.07,
+    "덤벨 해머컬":0.12,"바벨컬":0.3,"EZ바 컬":0.3,"인클라인 덤벨컬":0.1,"케이블 컬":0.25,
+    "프리처 컬":0.2,"컨센트레이션 컬":0.1,
+    "오버헤드 덤벨 익스텐션":0.18,"케이블 푸시다운":0.4,"라잉 트라이셉스 익스텐션":0.25,
+    "케이블 로프 푸시다운":0.35,"트라이셉스 킥백":0.08,"클로즈그립 벤치프레스":0.5,
+    "리버스 컬":0.2,"리스트 컬":0.15,"파머스 워크":0.5,
+    "백스쿼트":0.9,"레그프레스":1.5,"핵스쿼트":0.6,"프론트스쿼트":0.6,"스미스 스쿼트":0.7,
+    "레그 익스텐션":0.55,
+    "케이블 풀스루":0.45,"루마니안 데드리프트":0.8,"컨벤셔널 데드리프트":1.0,"굿모닝":0.4,
+    "레그컬":0.5,"시티드 레그컬":0.55,
+    "워킹 런지":0.2,"힙 쓰러스트":0.9,"불가리안 스플릿 스쿼트":0.15,"스텝업":0.15,
+    "케이블 킥백":0.15,"힙 어브덕션":0.5,
+    "스탠딩 카프레이즈":0.7,"시티드 카프레이즈":0.5,"레그프레스 카프레이즈":1.0,
+    "케이블 크런치":0.4,"러시안 트위스트":0.1
   };
 
   // ── 5-day template: slots the builder fills ──────────
@@ -574,7 +601,7 @@
   var S={ excl:[], sessions:[], tab:"today", dayId:"d1",
           edit:null, draft:{w:20,r:8}, rest:{on:false,left:0,total:0,fin:false,ex:null},
           routine:null, gaps:[], acc:{}, focus:null, doneOpen:false, msg:null,
-          rests:{}, gears:{}, pad:null, gearOpen:null,
+          rests:{}, gears:{}, pad:null, gearOpen:null, bw:null,
           ready:false, resetScroll:false };
   var root=document.getElementById("root");
   var tick=null, saveT=null;
@@ -839,7 +866,7 @@
     S.routine.days.forEach(function(d){ d.ex.forEach(function(e){
       if(e.ty==="con") return;
       var p=rx(e);
-      if(p.w===null || !p.w) return;      // no reference weight logged yet
+      if(p.w===null || !p.w || p.est) return;   // 기록이 없거나 추정값이면 계획에 안 넣는다
       var v=e.sets * p.w * (p.r||parseRep(e.rep).lo);
       o[e.mg]=(o[e.mg]||0)+v;
       secOf(e.nm,e.mg).forEach(function(m){ o[m]=(o[m]||0)+v*0.5; });
@@ -870,8 +897,11 @@
       return {w:Math.min(rr.hi,Math.max(rr.lo,lm+(lc?1:0))), r:7, tag:"컨디셔닝",
         s:lc?"hold":"new", rr:rr, stall:0};
     }
-    if(!h.length) return {w:null, r:rr.lo, tag:"기준 설정",
-      s:"new", rr:rr, stall:0};
+    if(!h.length){
+      var est=startWeight(e);
+      return {w:est, r:rr.lo, tag:(est===null?"기준 설정":"기준 설정 · 추정"),
+        s:"new", est:(est===null?0:1), rr:rr, stall:0};
+    }
     var last=h[h.length-1], lw=topSet(last.sets).w;
     var work=last.sets.filter(function(x){ return x.w>=lw-1e-6; });
     // 램프업 한 세트는 워킹 세트 정족수에서 빼 준다. 첫 세트를 가볍게 올리는 건 정상인데
@@ -881,9 +911,17 @@
     var pk=-1, pkI=0, pkW=lw;
     h.forEach(function(x,i){ var v=metricOf(x.sets); if(v>pk+0.01){ pk=v; pkI=i; pkW=topSet(x.sets).w; } });
     var stall=h.length-1-pkI;
-    if(full && minR>=rr.hi)
+    if(full && minR>=rr.hi){
+      // 반복이 목표를 크게 넘었으면 무게가 한참 가벼운 것이다. 증량 단위로 기어가면
+      // 따라잡는 데 몇 주가 걸리므로, 추정 1RM 을 유지한 채 목표 상한에 맞는 무게로 한 번에 옮긴다.
+      if(minR-rr.hi>=3){
+        var jump=rnd(lw*(1+minR/30)/(1+rr.hi/30), inc);
+        return {w:Math.max(rnd(lw+inc,inc), jump), r:rr.hi, tag:"증량 · 무게 재설정",
+          s:"up", rr:rr, stall:stall};
+      }
       return {w:rnd(lw+inc,inc), r:rr.lo, tag:"증량 +"+nn(inc)+"kg",
         s:"up", rr:rr, stall:stall};
+    }
     if(stall>=TH)
       return {w:Math.max(inc,rnd(pkW*0.9,inc)), r:rr.lo, tag:"디로드 −10%",
         s:"deload", rr:rr, stall:stall};
@@ -891,6 +929,12 @@
     return {w:lw, r:Math.min(rr.hi,minR+1),
       tag:(minR>=rr.hi ? "유지 · 세트 채우기" : "유지 · 반복 +1"),
       s:"hold", rr:rr, stall:stall};
+  }
+  // 기록이 없는 종목의 첫 무게 — 20kg 고정값 대신 체중에서 뽑는다
+  function startWeight(e){
+    var c=BW[e.id];
+    if(!S.bw || !c) return null;
+    return Math.max(e.inc||2.5, rnd(S.bw*c, e.inc||2.5));
   }
   function nextHint(e){
     var a=dn(rawSets(e.id)); if(a.length<e.sets) return null;
@@ -936,6 +980,7 @@
       set("gym5:sessions", JSON.stringify(S.sessions.slice(-KEEP)));
       set("gym5:rests", JSON.stringify(S.rests));
       set("gym5:gears", JSON.stringify(S.gears));
+      set("gym5:bw", S.bw===null?"":String(S.bw));
     },250);
   }
 
@@ -944,7 +989,7 @@
   // 폰을 바꾸면 증량 이력이 통째로 날아가므로, 파일로 빼고 넣을 수 있어야 한다.
   function exportData(){
     var payload={ app:"set-logger", v:2, exportedAt:new Date().toISOString(),
-      excl:S.excl, sessions:S.sessions, rests:S.rests, gears:S.gears };
+      excl:S.excl, sessions:S.sessions, rests:S.rests, gears:S.gears, bw:S.bw };
     var url, a;
     try{
       url=URL.createObjectURL(new Blob([JSON.stringify(payload)],{type:"application/json"}));
@@ -995,6 +1040,7 @@
         S.excl=d.excl.filter(function(x){ return typeof x==="string"; });
       if(d.rests && typeof d.rests==="object") S.rests=d.rests;
       if(d.gears && typeof d.gears==="object") S.gears=d.gears;
+      if(typeof d.bw==="number") S.bw=d.bw;
       rebuild(); save();
       // 오늘 기록이 딸려 왔으면 그 Day 로 맞춰 준다
       var k2=todayKey(), td=S.sessions.filter(function(x){ return x.date===k2; });
@@ -1116,10 +1162,10 @@
   function keypad(isCon){
     var k=S.pad.k;
     var lb = k==="w" ? (isCon?"분":"kg") : k==="r" ? (isCon?"RPE":"회")
-           : k==="lv" ? "레벨" : "레벨";
+           : k==="bw" ? "체중 kg" : "레벨";
     var cur = S.pad.buf!=="" ? S.pad.buf
-      : (k==="wl" ? (S.pad.cur===null?"":nn(S.pad.cur))
-        : (S.draft[k]===null||S.draft[k]===undefined) ? "" : nn(S.draft[k]));
+      : (k==="wl" || k==="bw") ? (S.pad.cur===null||S.pad.cur===undefined?"":nn(S.pad.cur))
+        : (S.draft[k]===null||S.draft[k]===undefined) ? "" : nn(S.draft[k]);
     return '<div class="pad">'
       +'<div class="padtop"><span class="plb">'+esc(lb)+'</span>'
       +'<span class="pval">'+(cur===""?'<span class="ph">0</span>':esc(cur))+'</span></div>'
@@ -1149,12 +1195,13 @@
     var tag, big, wtag=0, hint="";
     if(complete){
       tag="완료 · 다음"; big='<span class="sm">'+esc(nextHint(e)||"기록됨")+'</span>';
-    } else if(p.w===null){
-      // 히어로 자리는 숫자 자리다. 기준이 없으면 기본값을 띄우고 안내는 메타로 내린다.
+    } else if(p.w===null || p.est){
+      // 히어로 자리는 숫자 자리다. 기준이 없으면 추정값을 띄우고 안내는 메타로 내린다.
       tag=p.tag;
       var pl0=planned(e,0);
       big=nn(pl0.w)+'<em>'+U+'</em>'+(isCon?'':' <i>× '+pl0.r+'</i>');
-      hint="수정으로 첫 무게를 정하면 다음 세션부터 자동 처방된다";
+      hint = p.est ? "체중 기준 추정값이다. 첫 세트로 감을 잡고 수정해라"
+                   : "목록 탭에 체중을 넣으면 첫 무게를 추정한다";
     } else {
       tag=p.tag; wtag = (p.s==="deload")?1:0;
       big=nn(p.w)+'<em>'+U+'</em>'+(isCon?'':' <i>× '+p.r+'</i>');
@@ -1664,6 +1711,11 @@
     var nS=S.sessions.length, nX=S.excl.length;
     h+='<div class="ghd">데이터<span>이 폰에만 저장된다</span></div>'
       +'<div class="card" style="margin-top:0">'
+      +'<button class="drow" data-act="bwpad"><div class="l">'
+      +'<div class="nm">체중</div>'
+      +'<div class="mt">새 종목의 첫 무게를 체중에서 추정한다</div></div>'
+      +'<span class="go">'+(S.bw?nn(S.bw)+'kg':'입력')+'</span></button>'
+      +(S.pad && S.pad.k==="bw" ? '<div class="stepwrap">'+keypad(false)+'</div>' : '')
       +'<button class="drow" data-act="export"><div class="l">'
       +'<div class="nm">기록 내보내기</div>'
       +'<div class="mt">세션 '+nS+'개 · 제외 '+nX+'개를 JSON 파일로</div></div>'
@@ -1673,7 +1725,10 @@
       +'<div class="mt">같은 날짜·Day는 덮어쓰고 나머지는 합친다</div></div>'
       +'<span class="go">선택</span></button></div>';
     if(S.msg) h+='<div class="dmsg" data-w="'+(S.msg.w?1:0)+'">'+esc(S.msg.t)+'</div>';
-    h+='<div class="note"><b>기록은 이 브라우저에만 남는다.</b> 서버도 계정도 없어서, 브라우저 데이터를 지우거나 '
+    h+='<div class="note"><b>체중은 첫 무게 추정에만 쓴다.</b> 한 번도 안 해 본 종목이면 '
+      +'체중 × 종목별 계수로 시작 무게를 띄운다. 한 번 기록하면 그다음부터는 실제 기록으로 처방하므로 '
+      +'추정값은 더 쓰이지 않는다.<br><br>'
+      +'<b>기록은 이 브라우저에만 남는다.</b> 서버도 계정도 없어서, 브라우저 데이터를 지우거나 '
       +'폰을 바꾸면 그대로 사라진다. 처방은 과거 기록에서 나오므로 잃으면 앱이 처음으로 돌아간다. '
       +'가끔 내보내서 파일을 다른 데 두는 편이 안전하다.<br><br>'
       +'<b>스위치를 끄면 그 종목은 추천에서 빠진다.</b> 루틴은 즉시 다시 짜여서 같은 부위의 다음 순위 종목이 '
@@ -1856,6 +1911,10 @@
     if(a==="pad"){ S.pad={k:t.dataset.k, buf:"", i:null, cur:null}; return render(); }
     if(a==="auxlv"){ var ai2=+t.dataset.i;
       S.edit=null; S.pad={k:"wl", buf:"", i:ai2, cur:auxLv(ai2)}; return render(); }
+    if(a==="bwpad"){
+      S.pad = (S.pad && S.pad.k==="bw") ? null : {k:"bw", buf:"", i:null, cur:S.bw};
+      return render();
+    }
     if(a==="padk"){
       if(!S.pad) return;
       var v=t.dataset.v, bf=S.pad.buf;
@@ -1876,6 +1935,7 @@
         sw.wl[S.pad.i]=num;
         S.pad=null; stamp(); save(); return render();
       }
+      if(k==="bw"){ S.bw=Math.max(20, Math.min(300, num)); S.pad=null; save(); return render(); }
       if(k==="r") num=Math.max(1, Math.round(num));
       else num=Math.max(0, num);
       S.draft[k]=num; S.pad=null; return render();
@@ -1932,7 +1992,7 @@
 
   (async function(){
     var ex=await get("gym5:excl"), s=await get("gym5:sessions");
-    var rt=await get("gym5:rests"), gr=await get("gym5:gears");
+    var rt=await get("gym5:rests"), gr=await get("gym5:gears"), bwv=await get("gym5:bw");
     try{ S.excl=ex?JSON.parse(ex):[]; }catch(e){ S.excl=[]; }
     try{ S.sessions=s?JSON.parse(s):[]; }catch(e){ S.sessions=[]; }
     try{ S.rests=rt?JSON.parse(rt):{}; }catch(e){ S.rests={}; }
@@ -1941,6 +2001,7 @@
     if(!Array.isArray(S.sessions)) S.sessions=[];
     if(!S.rests || typeof S.rests!=="object") S.rests={};
     if(!S.gears || typeof S.gears!=="object") S.gears={};
+    S.bw = (bwv && !isNaN(parseFloat(bwv))) ? parseFloat(bwv) : null;
     rebuild();
     var k=todayKey(), td=S.sessions.filter(function(x){ return x.date===k; });
     // 오늘 이미 뭔가 기록했으면 그걸 이어서, 아니면 다음 차례 Day 를 띄운다
