@@ -874,7 +874,10 @@
       s:"new", rr:rr, stall:0};
     var last=h[h.length-1], lw=topSet(last.sets).w;
     var work=last.sets.filter(function(x){ return x.w>=lw-1e-6; });
-    var full=work.length>=e.sets, minR=Math.min.apply(null, work.map(function(x){ return x.r; }));
+    // 램프업 한 세트는 워킹 세트 정족수에서 빼 준다. 첫 세트를 가볍게 올리는 건 정상인데
+    // 그걸 미달로 세면 목표 반복을 다 채우고도 증량이 영영 안 붙는다.
+    var need=Math.max(1, e.sets-1);
+    var full=work.length>=need, minR=Math.min.apply(null, work.map(function(x){ return x.r; }));
     var pk=-1, pkI=0, pkW=lw;
     h.forEach(function(x,i){ var v=metricOf(x.sets); if(v>pk+0.01){ pk=v; pkI=i; pkW=topSet(x.sets).w; } });
     var stall=h.length-1-pkI;
@@ -884,7 +887,9 @@
     if(stall>=TH)
       return {w:Math.max(inc,rnd(pkW*0.9,inc)), r:rr.lo, tag:"디로드 −10%",
         s:"deload", rr:rr, stall:stall};
-    return {w:lw, r:Math.min(rr.hi,minR+1), tag:"유지 · 반복 +1",
+    // 반복이 이미 상한이면 "반복 +1"은 거짓말이다. 무엇이 모자란지 그대로 말한다.
+    return {w:lw, r:Math.min(rr.hi,minR+1),
+      tag:(minR>=rr.hi ? "유지 · 세트 채우기" : "유지 · 반복 +1"),
       s:"hold", rr:rr, stall:stall};
   }
   function nextHint(e){
@@ -1170,7 +1175,7 @@
         +nn(pTop.w)+'kg × '+pTop.r+(p.stall>=2?' · 정체 '+p.stall+'세션':''));
     }
     var rp = complete ? null : ramp(e, p.w);
-    if(rp) mt.push('램프업 '+rp.join(' · ')+' kg × 5회');
+    if(rp) mt.push('램프업 '+rp.join(' · ')+' kg × 5회 · 기록하지 않는다');
     if(hint) mt.push(hint);
     var swapped = e.from ? '<b class="from">'+esc(e.from)+' 대신</b>'
       +'<button class="undo" data-act="unswap" data-slot="'+e.slot+'">되돌리기</button>' : '';
