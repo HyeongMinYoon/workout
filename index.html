@@ -598,6 +598,9 @@
       ["어깨","cmp",4],["어깨","iso",4],["이두","iso",4],["삼두","iso",4],["이두","iso",3],["복근","iso",3],["컨디셔닝","con",1]]}
   ];
 
+  // 하루 최소 종목 수(컨디셔닝 제외) · 하루 보강 상한 · 끌어다 쓸 부위
+  var MINEX=6, MAXFILL=2, FILL=["복근","후면삼각","전완","어깨","이두","삼두"];
+
   var S={ excl:[], sessions:[], tab:"today", dayId:"d1",
           edit:null, draft:{w:20,r:8}, rest:{on:false,left:0,total:0,fin:false,ex:null},
           routine:null, gaps:[], acc:{}, focus:null, doneOpen:false, msg:null,
@@ -626,6 +629,34 @@
           rest: ty==="con"?0:g.rest[ty] });
       });
       return {id:t.id, nm:t.nm, sub:t.sub, wu:t.wu||[], cl:t.cl||[], ex:ex};
+    });
+
+    // 제외가 많아 슬롯을 못 채우면 그날이 통째로 얇아진다. 하루 최소 종목 수를 지키도록
+    // 어깨 · 팔 · 코어에서 보강을 넣는다. 회복이 빠르고 다른 날과 잘 안 겹치는 부위들이다.
+    // 고를 때는 주간 처방 세트가 가장 적은 부위부터 — 부족한 데를 메우는 게 목적이다.
+    var cnt={};
+    days.forEach(function(d){ d.ex.forEach(function(e){
+      if(e.ty!=="con") cnt[e.mg]=(cnt[e.mg]||0)+e.sets; }); });
+    days.forEach(function(d){
+      var lift=d.ex.filter(function(e){ return e.ty!=="con"; }).length, added=0;
+      while(lift<MINEX && added<MAXFILL){
+        var pool=FILL.slice().sort(function(a,b){ return (cnt[a]||0)-(cnt[b]||0); });
+        var pick=null;
+        for(var i=0;i<pool.length && !pick;i++){
+          var mg=pool[i];
+          var av=(LIB[mg]||[]).filter(function(x){
+            return x.ty==="iso" && S.excl.indexOf(x.n)<0 && !used[x.n]; });
+          if(av.length) pick={mg:mg, it:av[0]};
+        }
+        if(!pick) break;
+        used[pick.it.n]=1;
+        var ne={ id:pick.it.n, nm:pick.it.n, ty:"iso", mg:pick.mg, inc:pick.it.inc,
+          slot:100+lift, fill:1, sets:g.sets.iso, rep:g.rep.iso, rest:g.rest.iso };
+        var at=d.ex.findIndex(function(e){ return e.ty==="con"; });   // 컨디셔닝 앞에
+        if(at<0) d.ex.push(ne); else d.ex.splice(at,0,ne);
+        cnt[pick.mg]=(cnt[pick.mg]||0)+ne.sets;
+        lift++; added++;
+      }
     });
     S.gaps=gaps;
     return {days:days};
@@ -1216,7 +1247,8 @@
 
     // 지난 기록 + 램프업을 한 줄 메타로 합쳐 처방 무게와의 크기 차이를 4배로 벌린다
     var mt=[];
-    mt.push(isCon ? esc(e.rep)+"분" : e.sets+" × "+esc(e.rep)+" · "+exMin(e)+"분");
+    mt.push((e.fill?"보강 · ":"")+(isCon ? esc(e.rep)+"분"
+      : e.sets+" × "+esc(e.rep)+" · "+exMin(e)+"분"));
     if(pTop && !isCon){
       mt.push('지난 '+shortK(lastS.date)+' · '+daysAgo(lastS.date)+'일 전 · 최고 '
         +nn(pTop.w)+'kg × '+pTop.r+(p.stall>=2?' · 정체 '+p.stall+'세션':''));
@@ -1293,7 +1325,8 @@
       val=t?nn(t.w)+'<em>'+(isCon?"분":"kg")+'</em>'+(isCon?'':' × '+t.r):'—'; }
     else val=(p.w===null?'—':nn(p.w)+'<em>'+(isCon?"분":"kg")+'</em>'+(isCon?'':' × '+p.r));
     var mt = isCon ? "컨디셔닝 · "+esc(e.rep)+"분"
-                   : esc(e.mg)+" · "+e.sets+" × "+esc(e.rep)+" · "+exMin(e)+"분";
+                   : (e.fill?"보강 · ":"")+esc(e.mg)+" · "+e.sets+" × "+esc(e.rep)
+                     +" · "+exMin(e)+"분";
     if(done>0 && !fin) mt += " · "+done+"세트 완료";
     return '<button class="up" data-done="'+(fin?1:0)+'" data-act="focus" data-ex="'+esc(e.id)+'">'
       +'<div style="min-width:0"><div class="nm">'+esc(e.nm)+'</div>'
@@ -1677,7 +1710,8 @@
 
     if(S.gaps.length){
       h+='<div class="warnbox">제외가 많아 채우지 못한 자리가 있다 · '+esc(S.gaps.join(", "))
-        +'. 해당 부위의 종목 하나는 켜 둬야 루틴이 완성된다.</div>';
+        +'. 그 자리는 어깨 · 팔 · 코어 보강으로 대신 채웠지만, 해당 부위를 훈련하려면 '
+        +'종목 하나는 켜 둬야 한다.</div>';
     }
 
     var groups=MGRP.concat([{g:"컨디셔닝", list:["컨디셔닝"]}]);
