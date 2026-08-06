@@ -508,7 +508,9 @@
   ];
   // 무게 개념이 없는 맨몸 종목. 무게 칸을 아예 안 띄우고 횟수만 받는다.
   var BWONLY={"행잉 니레이즈":1,"레그레이즈":1,"플랭크":1};
+  var TIMED={"플랭크":1};              // 반복이 아니라 버틴 시간으로 재는 종목
   function isBody(e){ return e && BWONLY[e.id]===1; }
+  function repUnit(e){ return (e && TIMED[e.id]) ? "초" : "회"; }
 
   function secOf(nm,pri){ var o=[];
     // 카프레이즈는 종아리 고립이다. "레그프레스 카프레이즈"가 레그프레스 패턴에 걸려
@@ -549,7 +551,7 @@
       L("글루트 킥백 머신","iso",2.5) ],
     "종아리":[ L("스탠딩 카프레이즈","iso",2.5), L("시티드 카프레이즈","iso",2.5), L("레그프레스 카프레이즈","iso",5) ],
     "복근":[ L("행잉 니레이즈","iso",1.25), L("케이블 크런치","iso",2.5), L("레그레이즈","iso",1.25),
-      L("플랭크","iso",1.25), L("러시안 트위스트","iso",1.25) ],
+      L("플랭크","iso",1.25,"30-60"), L("러시안 트위스트","iso",1.25) ],
     "컨디셔닝":[ L("사이클 인터벌","con",1,"10-14"), L("인클라인 트레드밀","con",1,"12-16"),
       L("로잉 인터벌","con",1,"10-14"), L("스텝밀","con",1,"12-16"), L("스테어 클라이머","con",1,"10-14") ]
   };
@@ -642,7 +644,7 @@
         used[pick.n]=1;
         ex.push({ id:pick.n, nm:pick.n, ty:ty, mg:mg, inc:pick.inc, slot:si,
           sets: ty==="con"?1:n,
-          rep:  ty==="con"?(pick.rep||"10-14"):g.rep[ty],
+          rep:  ty==="con"?(pick.rep||"10-14"):(pick.rep||g.rep[ty]),
           rest: ty==="con"?0:g.rest[ty] });
       });
       return {id:t.id, nm:t.nm, sub:t.sub, wu:t.wu||[], cl:t.cl||[], ex:ex};
@@ -668,7 +670,7 @@
         if(!pick) break;
         used[pick.it.n]=1;
         var ne={ id:pick.it.n, nm:pick.it.n, ty:"iso", mg:pick.mg, inc:pick.it.inc,
-          slot:100+lift, fill:1, sets:g.sets.iso, rep:g.rep.iso, rest:g.rest.iso };
+          slot:100+lift, fill:1, sets:g.sets.iso, rep:(pick.it.rep||g.rep.iso), rest:g.rest.iso };
         var at=d.ex.findIndex(function(e){ return e.ty==="con"; });   // 컨디셔닝 앞에
         if(at<0) d.ex.push(ne); else d.ex.splice(at,0,ne);
         cnt[pick.mg]=(cnt[pick.mg]||0)+ne.sets;
@@ -727,8 +729,12 @@
   function topSet(a){ a=dn(a); if(!a.length) return null;
     return a.reduce(function(x,y){ return (y.w>x.w||(y.w===x.w&&y.r>x.r))?y:x; }); }
   function e1rm(s){ return s?s.w*(1+s.r/30):0; }
-  function volOf(a){ return dn(a).reduce(function(t,s){ return t+s.w*s.r; },0); }
-  function metricOf(a){ return volOf(a); }
+  // 맨몸 종목은 kg·rep 이 없다. 부위 볼륨에는 0으로 넣고(무게가 없으니 톤수도 없다),
+  // 종목 자체의 추이는 총 반복으로 본다.
+  function volOf(a,id){ return (id && BWONLY[id]) ? 0
+    : dn(a).reduce(function(t,s){ return t+s.w*s.r; },0); }
+  function metricOf(a,id){ return (id && BWONLY[id])
+    ? dn(a).reduce(function(t,s){ return t+s.r; },0) : volOf(a,id); }
   // ── 종목 대체 ────────────────────────────────────────
   // 기구가 고장났거나 남이 쓰고 있을 때 같은 부위의 다른 종목으로 갈아탄다.
   // 오늘 이 세션에만 적용되고(목록 탭의 스위치가 영구 제외), 세트 구성은 새 종목을 따른다.
@@ -745,7 +751,7 @@
     return { id:name, nm:name, ty:ty, mg:li.mg, inc:li.inc, slot:slot,
       // 유형이 그대로면 슬롯의 세트 수를 지키고, 컴파운드↔고립이 바뀌면 그 유형의 기본값을 쓴다
       sets: ty==="con"?1:(ty===origTy?origSets:g.sets[ty]),
-      rep:  ty==="con"?(li.rep||"10-14"):g.rep[ty],
+      rep:  ty==="con"?(li.rep||"10-14"):(li.rep||g.rep[ty]),
       rest: ty==="con"?0:g.rest[ty] };
   }
   function subOf(){ var s=curSession(false); return (s&&s.sw)?s.sw:{}; }
@@ -831,10 +837,12 @@
   function curGear(id){
     var t=curSession(false);
     if(t && t.gear && t.gear[id]!==undefined) return t.gear[id];
+    // 라벨이 실제로 적힌 마지막 세션을 찾는다. 기록 여부로 거르면 기록 없이 라벨만 단 날이
+    // 통째로 무시되고, "가장 최근 세션"만 보면 라벨 없이 기록한 날이 옛 라벨을 지워 버린다.
     var k=todayKey(), last=null;
     S.sessions.forEach(function(s){
-      if(s.date<k && dn(s.e[id]).length && (!last || s.date>=last.date)) last=s; });
-    return last?gearOf(last,id):"";
+      if(s.date<k && s.gear && s.gear[id]!==undefined && (!last || s.date>=last.date)) last=s; });
+    return last?last.gear[id]:"";
   }
   // 이 종목에서 골랐던 기구 이름들 — 등록해 둔 것 + 기록에 실제로 남은 것
   function gearList(id){
@@ -857,7 +865,10 @@
 
   function history(id){ var k=todayKey(), g=curGear(id);
     return S.sessions.filter(function(s){
-      return s.date<k && s.e[id] && dn(s.e[id]).length && gearOf(s,id)===g; })
+      if(!(s.date<k && s.e[id] && dn(s.e[id]).length)) return false;
+      var sg = (s.gear && s.gear[id]!==undefined) ? s.gear[id] : null;
+      return sg===null || sg===g;   // 라벨이 없으면 현재 기구의 이력으로 본다
+    })
       .sort(function(a,b){ return a.date<b.date?-1:1; })
       .map(function(s){ return {date:s.date, sets:dn(s.e[id])}; }); }
 
@@ -896,7 +907,7 @@
         var a=dn(s.e[id]); if(!a.length) return;
         days[s.date+"|"+s.dayId]=1;
         if(e.ty==="con"){ cardio+=a.reduce(function(t,x){ return t+x.w; },0); return; }
-        var v=a.reduce(function(t,x){ return t+x.w*x.r; },0);
+        var v=BWONLY[id] ? 0 : a.reduce(function(t,x){ return t+x.w*x.r; },0);
         tvol+=v; tsets+=a.length;
         vol[e.mg]=(vol[e.mg]||0)+v;  sets[e.mg]=(sets[e.mg]||0)+a.length;
         secOf(e.nm,e.mg).forEach(function(m){
@@ -979,7 +990,7 @@
     var need=Math.max(1, e.sets-1);
     var full=work.length>=need, minR=Math.min.apply(null, work.map(function(x){ return x.r; }));
     var pk=-1, pkI=0, pkW=lw;
-    h.forEach(function(x,i){ var v=metricOf(x.sets); if(v>pk+0.01){ pk=v; pkI=i; pkW=topSet(x.sets).w; } });
+    h.forEach(function(x,i){ var v=metricOf(x.sets, e.id); if(v>pk+0.01){ pk=v; pkI=i; pkW=topSet(x.sets).w; } });
     var stall=h.length-1-pkI;
     if(full && minR>=rr.hi){
       // 반복이 목표를 크게 넘었으면 무게가 한참 가벼운 것이다. 증량 단위로 기어가면
@@ -996,7 +1007,9 @@
       return {w:Math.max(inc,rnd(pkW*0.9,inc)), r:rr.lo, tag:"디로드 −10%",
         s:"deload", rr:rr, stall:stall};
     // 반복이 이미 상한이면 "반복 +1"은 거짓말이다. 무엇이 모자란지 그대로 말한다.
-    return {w:lw, r:Math.min(rr.hi,minR+1),
+    // 하한으로 바닥을 막는다. 마지막 세트가 무너져 minR 이 낮으면 처방이 목표 범위 아래로
+    // 계속 내려가고, 그러면 증량 조건(상한 도달)에 영영 못 닿는다.
+    return {w:lw, r:Math.max(rr.lo, Math.min(rr.hi,minR+1)),
       tag:(minR>=rr.hi ? "유지 · 세트 채우기" : "유지 · 반복 +1"),
       s:"hold", rr:rr, stall:stall};
   }
@@ -1033,6 +1046,11 @@
   }
   function ensure(e,i){
     var s=curSession(true);
+    if(!s.gear) s.gear={};
+    if(s.gear[e.id]===undefined){
+      var ig=curGear(e.id);          // 물려받은 라벨을 이 세션에 실체화한다
+      if(ig) s.gear[e.id]=ig;
+    }
     if(!s.e[e.id]) s.e[e.id]=[];
     var a=s.e[e.id];
     while(a.length<=i){ var pl=planned(e,a.length);
@@ -1048,9 +1066,17 @@
   }
 
   var KEEP=300;   // localStorage에 남기는 최근 세션 수
+  function hasAny(s){
+    if(Object.keys(s.e||{}).some(function(k){ return (s.e[k]||[]).length; })) return true;
+    return ["gear","sw","wm","cl","wl"].some(function(k){
+      return s[k] && Object.keys(s[k]).length; });
+  }
   function save(){
     clearTimeout(saveT);
     saveT=setTimeout(function(){
+      // 세그먼트만 눌러도 세션이 생긴다. 아무것도 안 남은 지난 세션은 버린다.
+      var tk=todayKey();
+      S.sessions=S.sessions.filter(function(s){ return s.date===tk || hasAny(s); });
       set("gym5:excl", JSON.stringify(S.excl));
       set("gym5:sessions", JSON.stringify(S.sessions.slice(-KEEP)));
       set("gym5:rests", JSON.stringify(S.rests));
@@ -1270,7 +1296,7 @@
     var tag, big, wtag=0, hint="", body=isBody(e);
     if(body && !complete){
       var bp=rx(e);
-      tag=bp.tag; big=nn(bp.r)+'<em>회</em>';
+      tag=bp.tag; big=nn(bp.r)+'<em>'+repUnit(e)+'</em>';
       if(!hh.length) hint="맨몸 종목이다. 무게 없이 횟수만 기록한다";
     } else if(complete){
       tag="완료 · 다음"; big='<span class="sm">'+esc(nextHint(e)||"기록됨")+'</span>';
@@ -1358,7 +1384,7 @@
       h+='<div class="srow" data-on="'+on+'" data-next="'+(isNext?1:0)+'" data-edit="'+(editing?1:0)+'">'
         +'<button class="cbx" data-on="'+on+'" data-next="'+(isNext?1:0)+'" data-act="chk" '
         +'data-ex="'+esc(e.id)+'" data-i="'+i+'">'+CHK()+'</button>'
-        +'<span class="v">'+(body ? nn(pl.r)+'<em>회</em>'
+        +'<span class="v">'+(body ? nn(pl.r)+'<em>'+repUnit(e)+'</em>'
           : nn(pl.w)+'<em>'+U+'</em>'+(isCon?' · RPE '+pl.r:' × '+pl.r)
             +((isCon && pl.lv!==null && pl.lv!==undefined)?' · Lv '+nn(pl.lv):''))+'</span>'
         +mkr
@@ -1371,7 +1397,7 @@
         } else {
           h+=(body?"":stepRow(isCon?"분":"kg", "w", nn(S.draft.w), U,
                 "제안 "+nn(S.edit.sg.w), e.inc||1))
-            +stepRow(isCon?"RPE":"회", "r", S.draft.r, "", "제안 "+S.edit.sg.r, 1)
+            +stepRow(isCon?"RPE":repUnit(e), "r", S.draft.r, "", "제안 "+S.edit.sg.r, 1)
             // 사이클·트레드밀은 분·RPE 만으로는 재현이 안 된다. 저항 레벨을 같이 남긴다.
             +(isCon?stepRow("레벨", "lv", (S.draft.lv===null||S.draft.lv===undefined)?"—":nn(S.draft.lv),
                 "", "기구 저항", 1):"")
@@ -1394,9 +1420,9 @@
     var val;
     var body=isBody(e);
     if(fin){ var t=topSet(rawSets(e.id));
-      val=!t?'—':body?nn(t.r)+'<em>회</em>'
+      val=!t?'—':body?nn(t.r)+'<em>'+repUnit(e)+'</em>'
         :nn(t.w)+'<em>'+(isCon?"분":"kg")+'</em>'+(isCon?'':' × '+t.r); }
-    else val=body?nn(p.r)+'<em>회</em>'
+    else val=body?nn(p.r)+'<em>'+repUnit(e)+'</em>'
       :(p.w===null?'—':nn(p.w)+'<em>'+(isCon?"분":"kg")+'</em>'+(isCon?'':' × '+p.r));
     var mt = isCon ? "컨디셔닝 · "+esc(e.rep)+"분"
                    : (e.fill?"보강 · ":"")+esc(e.mg)+" · "+e.sets+" × "+esc(e.rep)
@@ -1457,13 +1483,13 @@
   }
   function vDone(d){
     var h='<div class="wrap">', tops=sessionTop(d);
-    var vol=0; d.ex.forEach(function(e){ if(e.ty!=="con") vol+=volOf(rawSets(e.id)); });
+    var vol=0; d.ex.forEach(function(e){ if(e.ty!=="con") vol+=volOf(rawSets(e.id), e.id); });
     // 같은 Day의 직전 세션과 비교 — 요일이 달라도 같은 부위끼리만 붙는다
     var k=todayKey();
     var prevS=S.sessions.filter(function(s){ return s.date<k && s.dayId===d.id; })
       .sort(function(a,b){ return a.date<b.date?-1:1; }).pop();
     var pv=0;
-    if(prevS) d.ex.forEach(function(e){ if(e.ty!=="con") pv+=volOf(prevS.e[e.id]); });
+    if(prevS) d.ex.forEach(function(e){ if(e.ty!=="con") pv+=volOf(prevS.e[e.id], e.id); });
     var dlt = pv ? (vol-pv)/pv*100 : null;
     var prs=tops.filter(function(x){ return x.pr; }).length;
     var cs=curSession(false), mins = (cs&&cs.t0&&cs.t1) ? Math.max(1,Math.round((cs.t1-cs.t0)/6e4)) : estDay(d);
@@ -1510,7 +1536,7 @@
           +'<div class="l"><div class="nm">'+esc(x.e.nm)+'</div>'
           +'<div class="mt">'+esc(isCon?"컨디셔닝":x.e.mg)+' · '+x.sets+'세트'
           +(gg?' · '+esc(gg):'')+'</div></div>'
-          +'<div class="rr"><b>'+(isBody(x.e)?nn(x.top.r)+'회'
+          +'<div class="rr"><b>'+(isBody(x.e)?nn(x.top.r)+repUnit(x.e)
             :nn(x.top.w)+(isCon?'분 RPE'+x.top.r:'kg × '+x.top.r))+'</b>'
           +'<i class="'+cls+'">'+note+'</i></div>'+CHEV("chev sm")+'</button>';
       });
@@ -1646,10 +1672,10 @@
         +'<div class="card" style="margin-top:0">';
       mine.forEach(function(e){
         var hh=history(e.id), p=rx(e);
-        var pts=hh.map(function(s){ return metricOf(s.sets); });
+        var pts=hh.map(function(s){ return metricOf(s.sets, e.id); });
         var ct=topSet(hh[hh.length-1].sets);
         var old=hh.filter(function(s){ return daysAgo(s.date)>=28; });
-        var bv=old.length?metricOf(old[old.length-1].sets):pts[0];
+        var bv=old.length?metricOf(old[old.length-1].sets, e.id):pts[0];
         var d4=bv?(pts[pts.length-1]-bv)/bv*100:0;
         var wn=(p.s==="deload"||d4<-0.5)?1:0;
         rows+='<div class="erow"><div class="l"><div class="nm">'+esc(e.nm)+'</div>'
@@ -1754,7 +1780,7 @@
             +a.map(function(x){ return x.w+"분 RPE"+x.r; }).join("  ")+'</span></div>'; return; }
         ns+=a.length;
         lines+='<div class="lgl"><b>'+esc(id)+'</b><span>'
-          +a.map(function(x){ return isBody(e)?(x.r+"회"):(nn(x.w)+"×"+x.r); }).join("  ")
+          +a.map(function(x){ return isBody(e)?(x.r+repUnit(e)):(nn(x.w)+"×"+x.r); }).join("  ")
           +'</span></div>';
       });
       if(!lines) return;
