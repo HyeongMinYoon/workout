@@ -614,7 +614,9 @@
   ];
 
   // 하루 최소 종목 수(컨디셔닝 제외) · 하루 보강 상한 · 끌어다 쓸 부위
-  var MINEX=6, MAXFILL=2, FILL=["복근","후면삼각","전완","어깨","이두","삼두"];
+  // 전완은 템플릿 슬롯이 없어 보강으로만 들어온다. 풀에서 빼면 편성 자체가 안 된다.
+  // 라이브러리에는 남겨 두므로 교체로 직접 고를 수는 있고, 컬 종목의 0.5배 기여도 그대로 잡힌다.
+  var MINEX=6, MAXFILL=2, FILL=["복근","후면삼각","어깨","이두","삼두"];
 
   var S={ excl:[], sessions:[], tab:"today", dayId:"d1",
           edit:null, draft:{w:20,r:8}, rest:{on:false,left:0,total:0,fin:false,ex:null},
