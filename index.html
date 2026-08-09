@@ -989,7 +989,8 @@
       if(e.ty==="con") return;
       var p=rx(e);
       if(p.w===null || !p.w || p.est) return;   // 기록이 없거나 추정값이면 계획에 안 넣는다
-      var v=e.sets * p.w * (p.r||parseRep(e.rep).lo);
+      var r=p.r||parseRep(e.rep).lo, nb=p.back?p.back.n:0;
+      var v=(e.sets-nb)*p.w*r + nb*(p.back?p.back.w:0)*r;
       o[e.mg]=(o[e.mg]||0)+v;
       secOf(e.nm,e.mg).forEach(function(m){ o[m]=(o[m]||0)+v*0.5; });
     }); });
@@ -1012,6 +1013,39 @@
   }
 
   // ── progression engine ───────────────────────────────
+  // ── 감량 세트 ────────────────────────────────────────
+  // 한 무게로 4세트를 밀면 뒷세트가 무너진다(60kg × 13, 13, 6). 무게가 틀린 게 아니라
+  // 앞 두 세트에는 맞고 뒤 두 세트에는 무거운 것이다. 그래서 앞은 그대로 두고
+  // 뒤 세트만 −10% 로 내려 목표 반복을 채우게 한다.
+  // 눈금 위로 반올림하면 감량이 −6% 밖에 안 되는 일이 생긴다. 눈금 아래로 내린다.
+  function backW(w,inc){ inc=inc||2.5;
+    var b=Math.round(Math.floor(w*0.9/inc)*inc*100)/100;
+    if(b<inc) b=inc;
+    if(b>=w) b=Math.max(inc, Math.round((w-inc)*100)/100);
+    return b; }
+  // 지난 세션에서 최고 중량 세트가 목표 하한 아래로 떨어졌으면 그 수만큼 내린다.
+  // 이미 감량 세트를 쓴 세션이면 그 구조를 이어받는다 — 안 그러면 증량할 때마다
+  // 다시 4세트 스트레이트로 돌아가 또 무너지는 걸 반복한다.
+  function backOff(e, last, lw, rr, inc){
+    var max=Math.max(0, e.sets-2); if(!max) return null;
+    var ls=last.sets, top=[], topIdx=-1;
+    ls.forEach(function(x,i){ if(x.w>=lw-1e-6){ top.push(x); topIdx=i; } });
+    if(!top.length) return null;
+    var below=top.filter(function(x){ return x.r<rr.lo; }).length;
+    var best=Math.max.apply(null, top.map(function(x){ return x.r; }));
+    if(best<rr.lo) return null;          // 앞 세트부터 미달이면 무게 자체가 무겁다
+    var prev=0;
+    for(var i=topIdx+1;i<ls.length;i++){ if(ls[i].w<lw-1e-6) prev++; }
+    var n=Math.min(max, Math.max(below, prev));
+    if(!n) return null;
+    return {n:n};
+  }
+  // 감량 무게는 "이번에 처방한 무게" 기준이다. 증량이 붙으면 감량 세트도 같이 올라간다.
+  function withBack(w, back, inc){
+    if(!back || !w) return null;
+    var bw=backW(w, inc);
+    return bw<w ? {n:back.n, w:bw} : null;
+  }
   function rx(e){
     var rr=parseRep(e.rep), inc=e.inc||2.5, h=history(e.id), TH=G().stall;
     if(e.ty==="con"){
@@ -1035,7 +1069,12 @@
     // 램프업 한 세트는 워킹 세트 정족수에서 빼 준다. 첫 세트를 가볍게 올리는 건 정상인데
     // 그걸 미달로 세면 목표 반복을 다 채우고도 증량이 영영 안 붙는다.
     var need=Math.max(1, e.sets-1);
-    var full=work.length>=need, minR=Math.min.apply(null, work.map(function(x){ return x.r; }));
+    // 정족수는 "그날 한 세트 수"로 보고, 증량 판정은 최고 중량 세트만으로 한다.
+    // 감량 세트를 처방하면 최고 중량 세트가 2개로 줄어드는데, 그걸 정족수 미달로 세면
+    // 증량이 영영 안 붙는다. 무게가 다른 세트의 반복은 애초에 비교 대상이 아니다.
+    var full=last.sets.length>=need && work.length>=Math.min(2,need);
+    var minR=Math.min.apply(null, work.map(function(x){ return x.r; }));
+    var back=backOff(e, last, lw, rr, inc);
     var pk=-1, pkI=0, pkW=lw;
     h.forEach(function(x,i){ var v=metricOf(x.sets, e.id); if(v>pk+0.01){ pk=v; pkI=i; pkW=topSet(x.sets).w; } });
     var stall=h.length-1-pkI;
@@ -1045,10 +1084,10 @@
       if(minR-rr.hi>=3){
         var jump=rnd(lw*(1+minR/30)/(1+rr.hi/30), inc);
         return {w:Math.max(rnd(lw+inc,inc), jump), r:rr.hi, tag:"증량 · 무게 재설정",
-          s:"up", rr:rr, stall:stall};
+          s:"up", rr:rr, stall:stall, back:withBack(Math.max(rnd(lw+inc,inc), jump), back, inc)};
       }
       return {w:rnd(lw+inc,inc), r:rr.lo, tag:"증량 +"+nn(inc)+"kg",
-        s:"up", rr:rr, stall:stall};
+        s:"up", rr:rr, stall:stall, back:withBack(rnd(lw+inc,inc), back, inc)};
     }
     if(stall>=TH)
       return {w:Math.max(inc,rnd(pkW*0.9,inc)), r:rr.lo, tag:"디로드 −10%",
@@ -1058,7 +1097,7 @@
     // 계속 내려가고, 그러면 증량 조건(상한 도달)에 영영 못 닿는다.
     return {w:lw, r:Math.max(rr.lo, Math.min(rr.hi,minR+1)),
       tag:(minR>=rr.hi ? "유지 · 세트 채우기" : "유지 · 반복 +1"),
-      s:"hold", rr:rr, stall:stall};
+      s:"hold", rr:rr, stall:stall, back:withBack(lw, back, inc)};
   }
   // 기록이 없는 종목의 첫 무게 — 20kg 고정값 대신 체중에서 뽑는다
   function startWeight(e){
@@ -1071,7 +1110,8 @@
     var rr=parseRep(e.rep), inc=e.inc||2.5, tw=topSet(a).w;
     if(e.ty==="con") return "다음 "+Math.min(rr.hi,tw+1)+"분";
     var work=a.filter(function(x){ return x.w>=tw-1e-6; });
-    if(work.length>=e.sets && Math.min.apply(null,work.map(function(x){return x.r;}))>=rr.hi)
+    if(a.length>=e.sets && work.length>=Math.min(2,e.sets)
+      && Math.min.apply(null,work.map(function(x){return x.r;}))>=rr.hi)
       return nn(rnd(tw+inc,inc))+"kg × "+rr.lo;
     return nn(tw)+"kg 유지";
   }
@@ -1084,6 +1124,12 @@
     }
     if(rec) return {w:rec.w, r:rec.r, lv:rec.lv};
     var p=rx(e);
+    // 감량 세트는 앞 세트를 그대로 물려받으면 안 된다. 이번 세션에서 실제로 올린
+    // 최고 무게가 있으면 그걸 기준으로 내린다 — 처방과 다른 무게로 시작했을 수 있다.
+    if(p.back && i>=e.sets-p.back.n){
+      var tw=0; for(var k=0;k<i;k++){ if(a[k] && a[k].w>tw) tw=a[k].w; }
+      return {w:(tw?backW(tw,e.inc):p.back.w), r:p.r, lv:undefined};
+    }
     // 아직 안 찍은 세트는 이번 세션에서 실제로 쓴 마지막 무게를 이어 보여준다.
     // 앞 세트가 비어 있다고 처방값으로 튀면 같은 카드 안에서 두 숫자가 엇갈린다.
     for(var j=i-1;j>=0;j--){ if(a[j]) return {w:a[j].w, r:Math.min(p.r,a[j].r), lv:a[j].lv}; }
@@ -1376,6 +1422,10 @@
     }
     var rp = complete ? null : ramp(e, p.w);
     if(rp) mt.push('램프업 '+rp.join(' · ')+' kg × 5회 · 기록하지 않는다');
+    if(p.back && !complete){
+      var bn=[]; for(var bi=e.sets-p.back.n; bi<e.sets; bi++) bn.push(bi+1);
+      mt.push(bn.join(' · ')+'세트는 '+nn(p.back.w)+'kg 으로 내려 목표를 채운다');
+    }
     if(hint) mt.push(hint);
     var swapped = e.from ? '<b class="from">'+esc(e.from)+' 대신</b>'
       +'<button class="undo" data-act="unswap" data-slot="'+e.slot+'">되돌리기</button>' : '';
