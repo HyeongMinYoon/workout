@@ -595,7 +595,7 @@
       wu:[WU0,"레그 스윙 좌우 15회","바디웨이트 스쿼트 15회","카프 스트레치 좌우 30초"],
       cl:["대퇴사두 스탠딩 스트레치 좌우 30초","고관절 굴곡근 런지 스트레치 좌우 30초"],
       slots:[
-      ["대퇴사두","cmp",4],["대퇴사두","cmp",4],["둔근","cmp",3],["대퇴사두","iso",4],
+      ["대퇴사두","cmp",4],["대퇴사두","cmp",4],["둔근","cmp",3,"대퇴사두"],["대퇴사두","iso",4],
       ["종아리","iso",4],["이두","iso",4],["삼두","iso",3],["컨디셔닝","con",1]]},
     {id:"d3", nm:"Day 3", sub:"등 · 이두",
       wu:[WU0,"밴드 풀다운 15회","캣카우 10회","데드행 30초"],
@@ -631,19 +631,33 @@
   // exercise identity is its name, so logs survive routine regeneration
   function buildRoutine(){
     var used={}, g=G(), gaps=[];
-    var days=TPL.map(function(t){
+    function poolOf(mg,ty){ return (LIB[mg]||[]).filter(function(x){
+      return x.ty===ty && S.excl.indexOf(x.n)<0; }); }
+    function take(mg,ty){ var p=poolOf(mg,ty);
+      for(var i=0;i<p.length;i++){ if(!used[p[i].n]) return p[i]; }
+      return null; }
+    // 슬롯 배정은 두 번에 나눠 한다. 슬롯의 네 번째 값에 대체 부위가 적혀 있으면 "양보하는"
+    // 슬롯이라, 나머지가 다 고른 뒤에 남는 걸 가져간다. 안 그러면 먼저 오는 날이 마지막
+    // 후보를 집어가고, 정작 그 부위를 주로 다루는 날이 같은 종목을 한 번 더 받는다
+    // (제외가 많아 둔근 컴파운드가 힙 쓰러스트 하나뿐이면 Day 2·4 에 똑같이 들어갔다).
+    // 대체 부위에서도 못 찾으면 그때야 중복을 허용한다 — 종아리처럼 기구가 하나뿐인 부위다.
+    var assign={};
+    [0,1].forEach(function(phase){
+      TPL.forEach(function(t,di){ t.slots.forEach(function(sl,si){
+        if((sl[3]?1:0)!==phase) return;
+        var pick=take(sl[0],sl[1]) || (sl[3]?take(sl[3],sl[1]):null) || poolOf(sl[0],sl[1])[0];
+        if(!pick){ gaps.push(t.nm+" · "+sl[0]+" "
+          +(sl[1]==="cmp"?"컴파운드":sl[1]==="iso"?"고립":"컨디셔닝")); return; }
+        used[pick.n]=1; assign[di+":"+si]=pick;
+      }); });
+    });
+    var days=TPL.map(function(t,di){
       var ex=[];
       t.slots.forEach(function(sl,si){
-        var mg=sl[0], ty=sl[1], n=sl[2];
-        var pool=(LIB[mg]||[]).filter(function(x){
-          return x.ty===ty && S.excl.indexOf(x.n)<0; });
-        var pick=null;
-        for(var i=0;i<pool.length;i++){ if(!used[pool[i].n]){ pick=pool[i]; break; } }
-        if(!pick) pick=pool[0];
-        if(!pick){ gaps.push(t.nm+" · "+mg+" "+(ty==="cmp"?"컴파운드":ty==="iso"?"고립":"컨디셔닝")); return; }
-        used[pick.n]=1;
-        ex.push({ id:pick.n, nm:pick.n, ty:ty, mg:mg, inc:pick.inc, slot:si,
-          sets: ty==="con"?1:n,
+        var pick=assign[di+":"+si]; if(!pick) return;
+        var ty=sl[1], li=libInfo(pick.n);
+        ex.push({ id:pick.n, nm:pick.n, ty:ty, mg:(li?li.mg:sl[0]), inc:pick.inc, slot:si,
+          sets: ty==="con"?1:sl[2],
           rep:  ty==="con"?(pick.rep||"10-14"):(pick.rep||g.rep[ty]),
           rest: ty==="con"?0:g.rest[ty] });
       });
@@ -754,7 +768,38 @@
       rep:  ty==="con"?(li.rep||"10-14"):(li.rep||g.rep[ty]),
       rest: ty==="con"?0:g.rest[ty] };
   }
-  function subOf(){ var s=curSession(false); return (s&&s.sw)?s.sw:{}; }
+  // 교체는 원래 그날 하루짜리였다. 그런데 같은 슬롯을 매 사이클 같은 종목으로 바꾸는 일이
+  // 잦다 — 기구가 그 자리에 없거나, 그 종목이 몸에 더 맞거나. 매번 다시 누르면 그 사이
+  // 기본 종목에는 기록이 없으니 처방이 "기준 설정"으로 되돌아가고 소요시간도 안 할 운동
+  // 기준이 된다. 기구 라벨처럼, 그 Day 를 마지막으로 연 날의 교체를 물려받는다.
+  function subOf(){
+    var s=curSession(false);
+    if(s && s.sw && Object.keys(s.sw).length) return s.sw;
+    return inheritSw();
+  }
+  // 물려받아도 되는 교체인가. 편성이 바뀌어 슬롯이 없어졌거나 부위가 달라졌으면 버린다.
+  // day() 를 부르면 subOf() 로 되돌아오므로 여기서는 라이브러리만 본다.
+  function subOK(slot, nm){
+    var b=baseDay(), base=b.ex.find(function(x){ return x.slot===slot; });
+    if(!base || S.excl.indexOf(nm)>=0) return false;
+    if(nm===base.id) return true;
+    if(b.ex.some(function(x){ return x.slot!==slot && x.id===nm; })) return false;
+    var li=libInfo(nm); if(!li) return false;
+    return base.fill ? (li.ty==="iso" && FILL.indexOf(li.mg)>=0) : (li.mg===base.mg);
+  }
+  function inheritSw(){
+    var k=todayKey(), last=null;
+    S.sessions.forEach(function(x){
+      if(x.date<k && x.dayId===S.dayId && x.sw && Object.keys(x.sw).length
+        && (!last || x.date>=last.date)) last=x;
+    });
+    if(!last) return {};
+    var out={};
+    Object.keys(last.sw).forEach(function(sl){
+      if(subOK(+sl, last.sw[sl])) out[sl]=last.sw[sl];
+    });
+    return out;
+  }
   function baseDay(){
     return S.routine.days.find(function(d){ return d.id===S.dayId; })||S.routine.days[0];
   }
@@ -763,7 +808,9 @@
     if(!Object.keys(m).length) return base;
     var ex=[];
     base.ex.forEach(function(e){
-      var rep = m[e.slot] ? mkEx(m[e.slot], e.slot, e.sets, e.ty) : null;
+      // 되돌린 슬롯은 키를 지우지 않고 기본 종목 이름을 적어 둔다 —
+      // 지워 버리면 지난 사이클의 교체를 다시 물려받는다.
+      var rep = (m[e.slot] && m[e.slot]!==e.id) ? mkEx(m[e.slot], e.slot, e.sets, e.ty) : null;
       if(!rep){ ex.push(e); return; }
       // 세트를 이미 찍고 갈아탔으면 원래 종목도 남긴다 — 실제로 한 운동이다
       var got=dn(rawSets(e.id)).length;
@@ -1996,7 +2043,7 @@
       var pbase=baseDay().ex.find(function(x){ return x.slot===ps; });
       var ss2=curSession(true);
       if(!ss2.sw) ss2.sw={};
-      if(pbase && pn===pbase.id) delete ss2.sw[ps]; else ss2.sw[ps]=pn;
+      ss2.sw[ps]=pn;   // 기본 종목이어도 적어 둔다 (물려받기 해제 표시)
       S.pickOpen=null; S.focus=pn; save();
       return render();
     }
@@ -2008,13 +2055,16 @@
       var ni=(opts.indexOf(cur.id)+1)%opts.length;   // 한 번 더 누르면 그다음 후보
       var ss=curSession(true);
       if(!ss.sw) ss.sw={};
-      if(ni===0) delete ss.sw[sl]; else ss.sw[sl]=opts[ni];
+      ss.sw[sl]=opts[ni];   // opts[0] 은 기본 종목 — 지우지 말고 적어 둔다
       S.focus=opts[ni]; S.edit=null; save();
       return render();
     }
     if(a==="unswap"){
-      var sl2=+t.dataset.slot, s2=curSession(false);
-      if(s2 && s2.sw){ delete s2.sw[sl2]; save(); }
+      var sl2=+t.dataset.slot, s2=curSession(true), b2=baseDay().ex.find(function(x){
+        return x.slot===sl2; });
+      if(!s2.sw) s2.sw={};
+      if(b2) s2.sw[sl2]=b2.id; else delete s2.sw[sl2];
+      save();
       S.focus=null; S.edit=null;
       return render();
     }
