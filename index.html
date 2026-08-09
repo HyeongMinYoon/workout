@@ -369,6 +369,16 @@
     color:var(--accent);}
   .trow .tval i[data-w="1"]{color:var(--warn);}
   .trow .tval i[data-n="1"]{color:var(--lb3);}
+  .trow.ex .nm{width:112px; display:flex; flex-direction:column; gap:2px; line-height:1.25;}
+  .trow.ex .nm b{font-size:13.5px; font-weight:600; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap;}
+  .trow.ex .nm i{font-style:normal; font-size:11px; color:var(--lb3);
+    font-family:var(--num); font-variant-numeric:tabular-nums;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  /* 세션이 적은 종목도 최신 막대가 같은 자리에 오도록 오른쪽 정렬한다 */
+  .trow.ex .mini{height:26px; justify-content:flex-end;}
+  .trow.ex .mini i{flex:0 1 20px; min-width:6px;}
+  .trow.ex .tval{width:58px;}
 
   .lgh{padding:13px 15px 9px; display:flex; align-items:baseline; gap:8px;}
   .lgh .d{font-size:15px; font-weight:600;}
@@ -924,7 +934,7 @@
   function repMid(r){ var x=parseRep(r); return (x.lo+x.hi)/2; }
   function exSec(e,n){ if(n<=0) return 0;
     if(e.ty==="con") return parseRep(e.rep).hi*60+120;
-    return n*(15+repMid(e.rep)*3.5+e.rest)+SWITCH; }
+    return n*(15+repMid(e.rep)*3.5+restOf(e))+SWITCH; }
   function warmSec(e){ return e.ty==="cmp"?CMPWARM:0; }
   function exMin(e){ return Math.round((warmSec(e)+exSec(e,e.sets))/60); }
   function estDay(d){ var s=WARMUP+COOL; d.ex.forEach(function(e){ s+=warmSec(e)+exSec(e,e.sets); });
@@ -982,6 +992,37 @@
     return o;
   }
   function comma(v){ return Math.round(v).toLocaleString(); }
+  // 부위 볼륨은 종목 구성에 흔들린다 — 딥스를 빼면 가슴이 −42% 로 뜨지만 후퇴가 아니다.
+  // 종목별 추정 1RM 은 그 영향을 안 받는 진짜 진행 지표다. 앱은 이미 e1rm() 을 계산하면서
+  // "최고 기록 갱신" 배지에만 쓰고 버리고 있었다.
+  // 기구가 다르면 무게 축이 다르므로(테크노짐 50 ≠ 다른 브랜드 50) 라벨별로 줄을 나눈다.
+  function exTrend(N){
+    var mi={}, oi=0;
+    MGRP.forEach(function(g){ g.list.forEach(function(m){ mi[m]=oi++; }); });
+    // 그 종목에 마지막으로 붙인 라벨. curGear() 는 "오늘 이전"만 보므로 오늘 붙인 라벨이
+    // 빠져 줄이 갈라진다. 추이는 전 기간을 보는 화면이니 여기서 따로 구한다.
+    var cg={};
+    S.sessions.slice().sort(function(a,b){ return a.date<b.date?-1:1; }).forEach(function(sn){
+      Object.keys(sn.gear||{}).forEach(function(id){ if(sn.gear[id]) cg[id]=sn.gear[id]; }); });
+    // x축은 주가 아니라 "그 종목을 한 세션"이다. 5일 분할이라 주 단위로 자르면 한 주에
+    // 두 번 들어가거나 빈 칸이 생겨 추이가 끊겨 보인다.
+    var map={};
+    S.sessions.slice().sort(function(a,b){ return a.date<b.date?-1:1; }).forEach(function(sn){
+      Object.keys(sn.e||{}).forEach(function(id){
+        var a=dn(sn.e[id]); if(!a.length) return;
+        var e=findEx(id); if(!e || e.ty==="con") return;
+        var g=(sn.gear && sn.gear[id]) ? sn.gear[id] : (cg[id]||"");
+        var k=id+"|"+g;
+        var o=map[k] || (map[k]={id:id, gear:g, mg:e.mg, body:!!BWONLY[id],
+          vs:[], top:null, date:""});
+        o.vs.push(o.body ? Math.max.apply(null, a.map(function(x){ return x.r; }))
+                         : e1rm(topSet(a)));
+        o.date=sn.date; o.top=topSet(a);
+      });
+    });
+    return Object.keys(map).map(function(k){ var o=map[k]; o.vs=o.vs.slice(-N); return o; })
+      .sort(function(a,b){ return (mi[a.mg]-mi[b.mg]) || (a.date<b.date?1:-1); });
+  }
   // planned weekly volume implied by the current prescription, per muscle
   function expected(){
     var o={};
@@ -1145,6 +1186,10 @@
       if(ig) s.gear[e.id]=ig;
     }
     if(!s.e[e.id]) s.e[e.id]=[];
+    // 기록 탭은 루틴 순서로 그렸는데, 교체한 종목은 루틴에 없어서 맨 뒤로 밀렸다.
+    // 실제로 손댄 순서를 남겨 두면 그날 한 순서 그대로 다시 그릴 수 있다.
+    if(!s.ord) s.ord=[];
+    if(s.ord.indexOf(e.id)<0) s.ord.push(e.id);
     var a=s.e[e.id];
     while(a.length<=i){ var pl=planned(e,a.length);
       var rec={w:pl.w, r:pl.r, d:0};
@@ -1254,7 +1299,16 @@
   function restOf(e){
     if(!e) return 0;
     var v=S.rests[e.id];
-    return (typeof v==="number" && v>0) ? v : e.rest;
+    if(typeof v==="number" && v>0) return v;
+    return e.rest + autoRest(e);
+  }
+  // 뒷세트가 무너져 감량 세트가 붙었다는 건 세트 사이 회복이 모자랐다는 뜻이기도 하다.
+  // 무게만 내리고 휴식을 그대로 두면 반만 고치는 것이라 30초를 더 준다.
+  // 손으로 한 번이라도 조절하면(S.rests) 그 값이 이긴다.
+  function autoRest(e){
+    if(!e || e.ty==="con" || isBody(e)) return 0;
+    var p=rx(e);
+    return (p && p.back) ? 30 : 0;
   }
   function setRestOf(id,sec){
     sec=Math.max(15, Math.min(600, sec));
@@ -1856,6 +1910,28 @@
         });
         h+='</div>';
       }
+
+      var ets=exTrend(N);
+      if(ets.length){
+        h+='<div class="ghd">종목별 추이<span>추정 1RM · 최근 '+N+'세션</span></div>'
+          +'<div class="card" style="margin-top:0">';
+        ets.forEach(function(o){
+          var mmx=Math.max.apply(null,o.vs)||1;
+          var first=o.vs[0], cur=o.vs[o.vs.length-1];
+          var dl=(o.vs.length>1 && first) ? (cur-first)/first*100 : null;
+          var wn=(dl!==null && dl<0)?1:0, t=o.top;
+          h+='<div class="trow ex"><span class="nm"><b>'+esc(o.id)+'</b><i>'
+            +(t ? (o.body ? t.r+"회" : nn(t.w)+"kg × "+t.r) : "")
+            +(o.gear ? " · "+esc(o.gear) : "")+'</i></span><div class="mini">'
+            + o.vs.map(function(v,i){
+                return '<i class="'+(i===o.vs.length-1?"cur":"")+'" data-w="'+wn+'" style="height:'
+                  +Math.max(2,v/mmx*100).toFixed(1)+'%"></i>'; }).join("")
+            +'</div><div class="tval"><b>'+Math.round(cur)+(o.body?"회":"")+'</b>'
+            +'<i data-w="'+wn+'" data-n="'+(dl===null?1:0)+'">'
+            +(dl===null?"—":(dl>0?"+":"")+dl.toFixed(0)+"%")+'</i></div></div>';
+        });
+        h+='</div>';
+      }
     }
 
     var rows=S.sessions.slice().sort(function(a,b){ return a.date<b.date?1:-1; });
@@ -1864,8 +1940,17 @@
       if(n>=25) return;
       var dO=S.routine.days.find(function(d){ return d.id===s.dayId; });
       var ns=0, cm=0, lines="";
-      // 루틴 순서를 먼저 쓰되, 대체로 들어온 종목처럼 루틴에 없는 기록도 빠뜨리지 않는다
+      // t0 · t1 은 처음부터 저장하고 있었는데 완료 화면에서만 썼다. 지난 세션에도 보여 준다.
+      var sm=(s.t0&&s.t1) ? Math.round((s.t1-s.t0)/6e4) : 0;
+      // 그날 손댄 순서가 있으면 그대로. 없는 옛 기록은 루틴 순서로 되돌아가되,
+      // 대체로 들어온 종목처럼 루틴에 없는 기록도 빠뜨리지 않는다.
       var order=[], seen={};
+      (s.ord||[]).forEach(function(id){ if(!seen[id]){ seen[id]=1; order.push(id); } });
+      // ord 가 없는 옛 기록은 그날 Day 의 편성으로 되돌리되, 교체한 종목은 원래 슬롯
+      // 자리에 놓는다. 슬롯 번호가 남아 있어서 지난 기록도 대체로 제자리를 찾는다.
+      if(dO) dO.ex.forEach(function(e){
+        var id=(s.sw && s.sw[e.slot]) ? s.sw[e.slot] : e.id;
+        if(!seen[id]){ seen[id]=1; order.push(id); } });
       S.routine.days.forEach(function(d){ d.ex.forEach(function(e){
         if(!seen[e.id]){ seen[e.id]=1; order.push(e.id); } }); });
       Object.keys(s.e).forEach(function(id){ if(!seen[id]){ seen[id]=1; order.push(id); } });
@@ -1886,7 +1971,8 @@
       h+='<div class="card"'+(n===1?' style="margin-top:0"':'')+'><div class="lgh">'
         +'<span class="d">'+shortK(s.date)+'</span>'
         +'<span class="n">'+esc(dO?dO.nm+" · "+dO.sub:s.dayId)+'</span>'
-        +'<span class="v">'+ns+'세트'+(cm?' · '+cm+'분':'')+'</span></div>'+lines+'</div>';
+        +'<span class="v">'+ns+'세트'
+        +(sm?' · '+sm+'분':'')+(cm?' · 유산소 '+cm+'분':'')+'</span></div>'+lines+'</div>';
     });
     if(!n && !has) return '<div class="empty">아직 기록이 없다.<br>오늘 탭에서 체크하면 여기 쌓인다.</div>';
     return h+'</div>';
@@ -1997,7 +2083,8 @@
         nxt=nn(pl.w)+(e.ty==="con"?"분 RPE "+pl.r:"kg × "+pl.r);
         leftLbl="휴식 · "+(e.sets-dn(rawSets(e.id)).length)+"세트 남음"; }
       else { nxt="다음 종목"; leftLbl="휴식 · "+esc(e.nm)+" 완료"; }
-      why=(S.rests[e.id]?"기억된 ":"권장 ")+S.rest.total+"초 · "+esc(e.mg)
+      why=(S.rests[e.id]?"기억된 ":(autoRest(e)?"자동 +30초 · 권장 ":"권장 "))
+        +S.rest.total+"초 · "+esc(e.mg)
         +(e.ty==="cmp"?" 컴파운드":" 고립");
     }
     var h='<div class="restpill" data-tall="'+(tall?1:0)+'" data-fin="'+(S.rest.fin?1:0)+'">'
