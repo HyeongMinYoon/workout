@@ -517,6 +517,57 @@
     [/페이스풀|리어델트|벤트오버 레터럴/, ["등"]]
   ];
   // 무게 개념이 없는 맨몸 종목. 무게 칸을 아예 안 띄우고 횟수만 받는다.
+  // ── 덤벨 랙 ──────────────────────────────────────────
+  // 덤벨은 랙에 있는 무게만 존재한다. 1.25kg 단위로 올리면 6.25kg 덤벨을 처방하게 된다.
+  // 칸 폭도 무게대마다 다르다 — 8 다음은 9 지만 20 다음은 22 다.
+  var DBSTEP=[1,2,3,4,5,6,7,8,9,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,45,50];
+  var DB={"인클라인 덤벨프레스":1,"덤벨 벤치프레스":1,"덤벨 플라이":1,"원암 덤벨로우":1,
+    "덤벨 숄더프레스":1,"아놀드프레스":1,"사이드 레터럴 레이즈":1,"프론트 레이즈":1,
+    "벤트오버 레터럴 레이즈":1,"덤벨 해머컬":1,"인클라인 덤벨컬":1,"컨센트레이션 컬":1,
+    "오버헤드 덤벨 익스텐션":1,"트라이셉스 킥백":1,"워킹 런지":1,
+    "불가리안 스플릿 스쿼트":1,"스텝업":1,"러시안 트위스트":1};
+  function isDB(e){ return !!(e && DB[e.id]===1); }
+  // 기본 눈금에 "실제로 기록한 무게"를 합친다. 한 번 든 덤벨은 그 헬스장에 있는 것이다.
+  var RACK=null;
+  function rack(){
+    if(RACK) return RACK;
+    var o={};
+    DBSTEP.forEach(function(x){ o[x]=1; });
+    S.sessions.forEach(function(s){
+      Object.keys(s.e||{}).forEach(function(id){
+        if(DB[id]!==1) return;
+        (s.e[id]||[]).forEach(function(x){ if(x.d && x.w>0) o[x.w]=1; });
+      });
+    });
+    RACK=Object.keys(o).map(Number).sort(function(a,b){ return a-b; });
+    return RACK;
+  }
+  // 가장 가까운 랙 무게. 덤벨이 아니면 종전대로 증량 단위에 맞춘다.
+  function snapW(e,w){
+    if(!isDB(e)) return rnd(w, e.inc||2.5);
+    var r=rack(), best=r[0];
+    r.forEach(function(x){ if(Math.abs(x-w)<Math.abs(best-w)) best=x; });
+    return best;
+  }
+  function upW(e,w){
+    if(!isDB(e)) return rnd(w+(e.inc||2.5), e.inc||2.5);
+    var r=rack();
+    for(var i=0;i<r.length;i++){ if(r[i]>w+1e-6) return r[i]; }
+    return w;
+  }
+  function dnW(e,w){
+    if(!isDB(e)) return Math.max(e.inc||2.5, rnd(w-(e.inc||2.5), e.inc||2.5));
+    var r=rack(), best=null;
+    r.forEach(function(x){ if(x<w-1e-6 && (best===null||x>best)) best=x; });
+    return best===null ? w : best;
+  }
+  // 목표 비율에 가장 가까운, 지금보다 가벼운 무게
+  function offW(e,w,ratio){
+    if(!isDB(e)) return backW(w, e.inc, ratio);
+    var r=rack(), t=w*(ratio||0.9), best=null;
+    r.forEach(function(x){ if(x<w-1e-6 && (best===null||Math.abs(x-t)<Math.abs(best-t))) best=x; });
+    return best===null ? w : best;
+  }
   var BWONLY={"행잉 니레이즈":1,"레그레이즈":1,"플랭크":1};
   var TIMED={"플랭크":1};              // 반복이 아니라 버틴 시간으로 재는 종목
   function isBody(e){ return e && BWONLY[e.id]===1; }
@@ -543,13 +594,13 @@
       L("머신 숄더프레스","cmp",5),
       L("사이드 레터럴 레이즈","iso",1.25), L("케이블 레터럴 레이즈","iso",1.25), L("프론트 레이즈","iso",1.25) ],
     "후면삼각":[ L("페이스풀","iso",1.25), L("리어델트 플라이","iso",1.25), L("벤트오버 레터럴 레이즈","iso",1.25) ],
-    "이두":[ L("덤벨 해머컬","iso",1.25), L("바벨컬","iso",1.25), L("EZ바 컬","iso",1.25),
-      L("인클라인 덤벨컬","iso",1.25), L("케이블 컬","iso",2.5), L("프리처 컬","iso",1.25),
+    "이두":[ L("덤벨 해머컬","iso",1.25), L("바벨컬","iso",2.5), L("EZ바 컬","iso",2.5),
+      L("인클라인 덤벨컬","iso",1.25), L("케이블 컬","iso",2.5), L("프리처 컬","iso",2.5),
       L("컨센트레이션 컬","iso",1.25) ],
     "삼두":[ L("오버헤드 덤벨 익스텐션","iso",1.25), L("케이블 푸시다운","iso",2.5),
-      L("라잉 트라이셉스 익스텐션","iso",1.25), L("케이블 로프 푸시다운","iso",2.5),
+      L("라잉 트라이셉스 익스텐션","iso",2.5), L("케이블 로프 푸시다운","iso",2.5),
       L("케이블 오버헤드 익스텐션","iso",2.5), L("트라이셉스 킥백","iso",1.25), L("클로즈그립 벤치프레스","cmp",2.5) ],
-    "전완":[ L("리버스 컬","iso",1.25), L("리스트 컬","iso",1.25), L("파머스 워크","iso",2.5) ],
+    "전완":[ L("리버스 컬","iso",2.5), L("리스트 컬","iso",1.25), L("파머스 워크","iso",2.5) ],
     "대퇴사두":[ L("백스쿼트","cmp",5), L("레그프레스","cmp",5), L("핵스쿼트","cmp",5),
       L("프론트스쿼트","cmp",2.5), L("스미스 스쿼트","cmp",2.5), L("벨트 스쿼트","cmp",5),
       L("레그 익스텐션","iso",2.5), L("시시 스쿼트","iso",2.5) ],
@@ -954,7 +1005,7 @@
   function ramp(e,w){
     if(e.ty!=="cmp" || !w || isBody(e)) return null;
     var inc=e.inc||2.5;
-    return [0.4,0.6,0.8].map(function(p){ return nn(Math.max(inc, rnd(w*p,inc))); });
+    return [0.4,0.6,0.8].map(function(p){ return nn(Math.max(inc, snapW(e, w*p))); });
   }
 
   // ── weekly aggregation, indexed by week offset (0 = last 7 days) ──
@@ -1089,9 +1140,9 @@
     return {n:n, ratio:(pw ? Math.max(0.6, Math.min(0.95, pw/lw)) : 0.9)};
   }
   // 감량 무게는 "이번에 처방한 무게" 기준이다. 증량이 붙으면 감량 세트도 같이 올라간다.
-  function withBack(w, back, inc){
+  function withBack(e, w, back){
     if(!back || !w) return null;
-    var bw=backW(w, inc, back.ratio);
+    var bw=offW(e, w, back.ratio);
     return bw<w ? {n:back.n, w:bw, ratio:back.ratio} : null;
   }
   function rx(e){
@@ -1130,15 +1181,16 @@
       // 반복이 목표를 크게 넘었으면 무게가 한참 가벼운 것이다. 증량 단위로 기어가면
       // 따라잡는 데 몇 주가 걸리므로, 추정 1RM 을 유지한 채 목표 상한에 맞는 무게로 한 번에 옮긴다.
       if(minR-rr.hi>=3){
-        var jump=rnd(lw*(1+minR/30)/(1+rr.hi/30), inc);
-        return {w:Math.max(rnd(lw+inc,inc), jump), r:rr.hi, tag:"증량 · 무게 재설정",
-          s:"up", rr:rr, stall:stall, back:withBack(Math.max(rnd(lw+inc,inc), jump), back, inc)};
+        var jump=Math.max(upW(e,lw), snapW(e, lw*(1+minR/30)/(1+rr.hi/30)));
+        return {w:jump, r:rr.hi, tag:"증량 · 무게 재설정",
+          s:"up", rr:rr, stall:stall, back:withBack(e, jump, back)};
       }
-      return {w:rnd(lw+inc,inc), r:rr.lo, tag:"증량 +"+nn(inc)+"kg",
-        s:"up", rr:rr, stall:stall, back:withBack(rnd(lw+inc,inc), back, inc)};
+      var nw=upW(e,lw);
+      return {w:nw, r:rr.lo, tag:"증량 +"+nn(Math.round((nw-lw)*100)/100)+"kg",
+        s:"up", rr:rr, stall:stall, back:withBack(e, nw, back)};
     }
     if(stall>=TH)
-      return {w:Math.max(inc,rnd(pkW*0.9,inc)), r:rr.lo, tag:"디로드 −10%",
+      return {w:Math.max(inc, offW(e, pkW, 0.9)), r:rr.lo, tag:"디로드 −10%",
         s:"deload", rr:rr, stall:stall};
     // 반복이 이미 상한이면 "반복 +1"은 거짓말이다. 무엇이 모자란지 그대로 말한다.
     // 하한으로 바닥을 막는다. 마지막 세트가 무너져 minR 이 낮으면 처방이 목표 범위 아래로
@@ -1148,7 +1200,7 @@
     var tgt = full ? Math.min(rr.hi, minR+1) : minR;
     return {w:lw, r:Math.max(rr.lo, tgt),
       tag:((!full || minR>=rr.hi) ? "유지 · 세트 채우기" : "유지 · 반복 +1"),
-      s:"hold", rr:rr, stall:stall, back:withBack(lw, back, inc)};
+      s:"hold", rr:rr, stall:stall, back:withBack(e, lw, back)};
   }
   // 기록이 없는 종목의 첫 무게 — 20kg 고정값 대신 체중에서 뽑는다
   function startWeight(e){
@@ -1168,10 +1220,10 @@
     if(vs.length){
       vs.sort(function(a,b){ return a-b; });
       var m=vs.length%2 ? vs[(vs.length-1)/2] : (vs[vs.length/2-1]+vs[vs.length/2])/2;
-      return Math.max(inc, rnd(m, inc));
+      return Math.max(isDB(e)?rack()[0]:inc, snapW(e, m));
     }
     if(!S.bw) return null;
-    return Math.max(inc, rnd(S.bw*c, inc));
+    return Math.max(isDB(e)?rack()[0]:inc, snapW(e, S.bw*c));
   }
   // 같은 종목이 두 Day 에 걸리면(교체로 그렇게 되기 쉽다) 하루 걸러 두 번 하게 된다.
   // 처방은 지난 기록만 보지 앞뒤 날짜는 못 보므로, 사실만 알려 준다.
@@ -1191,7 +1243,7 @@
     var work=a.filter(function(x){ return x.w>=tw-1e-6; });
     if(a.length>=e.sets && work.length>=Math.min(2,e.sets)
       && Math.min.apply(null,work.map(function(x){return x.r;}))>=rr.hi)
-      return nn(rnd(tw+inc,inc))+"kg × "+rr.lo;
+      return nn(upW(e,tw))+"kg × "+rr.lo;
     return nn(tw)+"kg 유지";
   }
   function planned(e,i){
@@ -1207,7 +1259,7 @@
     // 최고 무게가 있으면 그걸 기준으로 내린다 — 처방과 다른 무게로 시작했을 수 있다.
     if(p.back && i>=e.sets-p.back.n){
       var tw=0; for(var k=0;k<i;k++){ if(a[k] && a[k].w>tw) tw=a[k].w; }
-      return {w:(tw?backW(tw,e.inc,p.back.ratio):p.back.w), r:p.r, lv:undefined};
+      return {w:(tw?offW(e,tw,p.back.ratio):p.back.w), r:p.r, lv:undefined};
     }
     // 아직 안 찍은 세트는 이번 세션에서 실제로 쓴 마지막 무게를 이어 보여준다.
     // 앞 세트가 비어 있다고 처방값으로 튀면 같은 카드 안에서 두 숫자가 엇갈린다.
@@ -1248,6 +1300,7 @@
       return s[k] && Object.keys(s[k]).length; });
   }
   function save(){
+    RACK=null;            // 새 덤벨 무게를 기록했을 수 있다
     clearTimeout(saveT);
     saveT=setTimeout(function(){
       // 세그먼트만 눌러도 세션이 생긴다. 아무것도 안 남은 지난 세션은 버린다.
@@ -1437,9 +1490,9 @@
 
   // 값 자체가 버튼이다 — 누르면 키패드가 열려서 스테퍼로 못 맞추는 숫자를 바로 넣는다.
   // 덤벨 랙에 12kg 이 없거나 케이블 눈금이 제각각인 경우가 ± 단위로는 안 맞는다.
-  function stepRow(lb,k,val,unit,hint,step){
+  function stepRow(lb,k,val,unit,hint,step,stepDn){
     return '<div class="strow"><span class="lb">'+esc(lb)+'</span>'
-      +'<button class="pm" data-act="'+k+'" data-v="-'+nn(step)+'">−</button>'
+      +'<button class="pm" data-act="'+k+'" data-v="-'+nn(stepDn===undefined?step:stepDn)+'">−</button>'
       +'<button class="disp" data-act="pad" data-k="'+k+'">'
       +'<b>'+val+(unit?'<em>'+unit+'</em>':'')+'</b><i>'+esc(hint)+'</i></button>'
       +'<button class="pm" data-act="'+k+'" data-v="'+nn(step)+'">+</button></div>';
@@ -1588,8 +1641,11 @@
         if(S.pad){
           h+=keypad(isCon);
         } else {
+          // 덤벨은 ± 도 랙 칸을 밟는다. 칸 폭이 무게대마다 달라 위아래를 따로 낸다.
+          var dw=S.draft.w, su=(isCon||body)?1:(isDB(e)?Math.round((upW(e,dw)-dw)*100)/100:(e.inc||1));
+          var sd=(isCon||body)?1:(isDB(e)?Math.round((dw-dnW(e,dw))*100)/100:(e.inc||1));
           h+=(body?"":stepRow(isCon?"분":"kg", "w", nn(S.draft.w), U,
-                "제안 "+nn(S.edit.sg.w), e.inc||1))
+                "제안 "+nn(S.edit.sg.w), su||(e.inc||1), sd||(e.inc||1)))
             +stepRow(isCon?"RPE":repUnit(e), "r", S.draft.r, "", "제안 "+S.edit.sg.r, 1)
             // 사이클·트레드밀은 분·RPE 만으로는 재현이 안 된다. 저항 레벨을 같이 남긴다.
             +(isCon?stepRow("레벨", "lv", (S.draft.lv===null||S.draft.lv===undefined)?"—":nn(S.draft.lv),
