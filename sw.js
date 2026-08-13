@@ -1,7 +1,7 @@
 /* 헬스장은 지하가 많다. 셸을 캐시해 두고, 온라인이면 조용히 갱신한다.
    기록 자체는 localStorage에 있으므로 이 캐시는 코드 파일만 다룬다.
    앱을 고칠 때마다 CACHE 값을 올려라 — 그래야 옛 셸이 정리된다. */
-var CACHE = "set-logger-v6";
+var CACHE = "set-logger-v7";
 var SHELL = [
   "./",
   "./index.html",
