@@ -1177,7 +1177,12 @@
     var minR=Math.min.apply(null, work.map(function(x){ return x.r; }));
     var back=backOff(e, last, lw, rr, inc);
     var pk=-1, pkI=0, pkW=lw;
-    h.forEach(function(x,i){ var v=metricOf(x.sets, e.id); if(v>pk+0.01){ pk=v; pkI=i; pkW=topSet(x.sets).w; } });
+    // 정체 판정은 총 볼륨이 아니라 세트당 볼륨으로 한다. 슬롯이 옮겨 가 세트 수가 줄면
+    // (EZ바 컬이 Day 5 4세트 → Day 4 3세트) 세트당 기록은 계속 올라도 총 볼륨이 줄어
+    // 디로드가 걸린다. 20kg × 11 × 3 을 하는 종목에 17.5kg 로 내리라고 하는 셈이다.
+    h.forEach(function(x,i){
+      var v=metricOf(x.sets, e.id)/(x.sets.length||1);
+      if(v>pk+0.01){ pk=v; pkI=i; pkW=topSet(x.sets).w; } });
     var stall=h.length-1-pkI;
     if(full && minR>=rr.hi){
       // 반복이 목표를 크게 넘었으면 무게가 한참 가벼운 것이다. 증량 단위로 기어가면
