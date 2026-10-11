@@ -496,7 +496,7 @@
 
   // ── goal is fixed: 근비대 + 체지방 (리컴프) ───────────
   var GOAL={ nm:"리컴프", sets:{cmp:4,iso:3}, rep:{cmp:"6-10",iso:"10-15"},
-             rest:{cmp:120,iso:60}, wk:[12,18], cd:[45,120], stall:3,
+             rest:{cmp:120,iso:60}, wk:[12,18], cd:[45,120],
              metric:"vol", mlb:"세션 볼륨", unit:"kg·rep" };
   function G(){ return GOAL; }
 
@@ -1150,7 +1150,7 @@
     return bw<w ? {n:back.n, w:bw, ratio:back.ratio} : null;
   }
   function rx(e){
-    var rr=parseRep(e.rep), inc=e.inc||2.5, h=history(e.id), TH=G().stall;
+    var rr=parseRep(e.rep), inc=e.inc||2.5, h=history(e.id);
     if(e.ty==="con"){
       var lc=h.length?h[h.length-1]:null, lm=lc?topSet(lc.sets).w:rr.lo;
       return {w:Math.min(rr.hi,Math.max(rr.lo,lm+(lc?1:0))), r:7, tag:"컨디셔닝",
@@ -1178,13 +1178,12 @@
     var full=last.sets.length>=need && work.length>=Math.min(2,need);
     var minR=Math.min.apply(null, work.map(function(x){ return x.r; }));
     var back=backOff(e, last, lw, rr, inc);
-    var pk=-1, pkI=0, pkW=lw;
-    // 정체 판정은 총 볼륨이 아니라 세트당 볼륨으로 한다. 슬롯이 옮겨 가 세트 수가 줄면
-    // (EZ바 컬이 Day 5 4세트 → Day 4 3세트) 세트당 기록은 계속 올라도 총 볼륨이 줄어
-    // 디로드가 걸린다. 20kg × 11 × 3 을 하는 종목에 17.5kg 로 내리라고 하는 셈이다.
+    var pk=-1, pkI=0;
+    // 정체 세션 수는 메타 줄 표시용이다(처방에는 안 쓴다). 총 볼륨이 아니라 세트당 볼륨으로 잰다 —
+    // 슬롯이 옮겨 가 세트 수가 줄면(EZ바 컬이 Day 5 4세트 → Day 4 3세트) 총 볼륨은 줄어도 기록은 오른다.
     h.forEach(function(x,i){
       var v=metricOf(x.sets, e.id)/(x.sets.length||1);
-      if(v>pk+0.01){ pk=v; pkI=i; pkW=topSet(x.sets).w; } });
+      if(v>pk+0.01){ pk=v; pkI=i; } });
     var stall=h.length-1-pkI;
     if(full && minR>=rr.hi){
       // 반복이 목표를 크게 넘었으면 무게가 한참 가벼운 것이다. 증량 단위로 기어가면
@@ -1198,9 +1197,8 @@
       return {w:nw, r:rr.lo, tag:"증량 +"+nn(Math.round((nw-lw)*100)/100)+"kg",
         s:"up", rr:rr, stall:stall, back:withBack(e, nw, back)};
     }
-    if(stall>=TH)
-      return {w:Math.max(inc, offW(e, pkW, 0.9)), r:rr.lo, tag:"디로드 −10%",
-        s:"deload", rr:rr, stall:stall};
+    // 디로드(정체 3세션 → −10%)는 없앴다. 매일 하는 게 아니라 세션 사이 회복이 충분하고,
+    // 세트당 볼륨으로 잰 정체는 증량 직후 반복이 하한으로 돌아가는 구간을 정체로 오판했다.
     // 반복이 이미 상한이면 "반복 +1"은 거짓말이다. 무엇이 모자란지 그대로 말한다.
     // 하한으로 바닥을 막는다. 마지막 세트가 무너져 minR 이 낮으면 처방이 목표 범위 아래로
     // 계속 내려가고, 그러면 증량 조건(상한 도달)에 영영 못 닿는다.
@@ -1555,7 +1553,7 @@
       hint = p.est ? "체중 기준 추정값이다. 첫 세트로 감을 잡고 수정해라"
                    : "목록 탭에 체중을 넣으면 첫 무게를 추정한다";
     } else {
-      tag=p.tag; wtag = (p.s==="deload")?1:0;
+      tag=p.tag;
       big=nn(p.w)+'<em>'+U+'</em>'+(isCon?'':' <i>× '+p.r+'</i>');
     }
     var dots='';
@@ -1787,7 +1785,6 @@
         }
         else if(x.pr){ note="최고 기록 갱신"; cls="pr"; }
         else if(x.first){ note="기준 설정"; }
-        else if(p.stall>=G().stall-1){ note="다음 디로드 대상"; cls="dl"; }
         else note="유지";
         var gg=curGear(x.e.id);
         h+='<button class="erow tap" data-act="focus" data-ex="'+esc(x.e.id)+'">'
@@ -1935,7 +1932,7 @@
         var old=hh.filter(function(s){ return daysAgo(s.date)>=28; });
         var bv=old.length?metricOf(old[old.length-1].sets, e.id):pts[0];
         var d4=bv?(pts[pts.length-1]-bv)/bv*100:0;
-        var wn=(p.s==="deload"||d4<-0.5)?1:0;
+        var wn=(d4<-0.5)?1:0;
         rows+='<div class="erow"><div class="l"><div class="nm">'+esc(e.nm)+'</div>'
           +'<div class="mt">'+esc(e.mg)+' · '+hh.length+'회 · '+esc(p.tag)
           +(p.stall>=2?' · 정체 '+p.stall:'')+'</div></div>'
