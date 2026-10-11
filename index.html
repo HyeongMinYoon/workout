@@ -447,6 +447,14 @@
   .sw i{position:absolute; top:2px; left:2px; width:27px; height:27px; border-radius:50%;
     background:#fff; transition:transform .22s; box-shadow:0 2px 5px rgba(0,0,0,.35);}
   .sw[data-on="1"] i{transform:translateX(20px);}
+  .cxopen{width:100%; text-align:left; padding:13px 15px; border-top:1px solid var(--sep);
+    font-size:14px; font-weight:500; color:var(--accent);}
+  .cxform{padding:12px 15px 14px; border-top:1px solid var(--sep);}
+  .cxform .gnew{width:100%; display:block;}
+  .cxl{font-size:12px; font-weight:600; color:var(--lb2); padding:12px 0 6px;}
+  .cxhint{font-size:11.5px; line-height:1.55; color:var(--lb3); padding-top:10px;}
+  .cxcancel{color:var(--lb2);}
+  .cxdel{flex:0 0 auto; font-size:12.5px; color:var(--lb3); padding:8px 4px;}
   .warnbox{background:rgba(242,176,58,.13); border-radius:12px; padding:12px 14px;
     margin-top:14px; font-size:12.5px; color:var(--warn); line-height:1.6;}
 
@@ -690,6 +698,7 @@
           edit:null, draft:{w:20,r:8}, rest:{on:false,left:0,total:0,fin:false,ex:null},
           routine:null, gaps:[], acc:{}, focus:null, doneOpen:false, msg:null,
           rests:{}, gears:{}, pad:null, gearOpen:null, pickOpen:null, bw:null,
+          custom:[], addOpen:null,
           ready:false, resetScroll:false };
   var root=document.getElementById("root");
   var tick=null, saveT=null;
@@ -824,6 +833,25 @@
       Object.keys(LIB).forEach(function(mg){ LIB[mg].forEach(function(x){
         LIBIDX[x.n]={mg:mg, ty:x.ty, inc:x.inc, rep:x.rep}; }); }); }
     return LIBIDX[nm]||null;
+  }
+  // ── 직접 추가한 종목 ─────────────────────────────────
+  // 기구 구분이 증량 단위 · 덤벨 랙 · 맨몸 여부를 한 번에 정한다. 라이브러리 맨 뒤에 붙이므로
+  // 기존 편성은 안 바뀌고 예비로 들어간다 — 교체로 고르거나 앞 순위를 끄면 올라온다.
+  var EQ={bb:{l:"바벨",inc:5}, mc:{l:"머신·케이블",inc:2.5}, db:{l:"덤벨",inc:2}, bw:{l:"맨몸",inc:1.25}};
+  function applyCustom(){
+    Object.keys(LIB).forEach(function(mg){
+      LIB[mg]=LIB[mg].filter(function(x){ return !x.c; }); });
+    S.custom.forEach(function(c){
+      if(!LIB[c.mg]) return;
+      var x=L(c.n, c.ty, c.inc, c.rep); x.c=1; LIB[c.mg].push(x);
+      if(c.eq==="db") DB[c.n]=1;
+      if(c.eq==="bw") BWONLY[c.n]=1;
+    });
+    LIBIDX=null; RACK=null;
+  }
+  function customOf(mg, ty, eq, n){
+    if(mg==="컨디셔닝") return {n:n, mg:mg, ty:"con", inc:1, rep:"10-14"};
+    return {n:n, mg:mg, ty:ty, inc:EQ[eq].inc, eq:eq};
   }
   function mkEx(name, slot, origSets, origTy){
     var li=libInfo(name); if(!li) return null;
@@ -1318,6 +1346,7 @@
       set("gym5:rests", JSON.stringify(S.rests));
       set("gym5:gears", JSON.stringify(S.gears));
       set("gym5:bw", S.bw===null?"":String(S.bw));
+      set("gym5:custom", JSON.stringify(S.custom));
     },250);
   }
 
@@ -1326,7 +1355,8 @@
   // 폰을 바꾸면 증량 이력이 통째로 날아가므로, 파일로 빼고 넣을 수 있어야 한다.
   function exportData(){
     var payload={ app:"set-logger", v:2, exportedAt:new Date().toISOString(),
-      excl:S.excl, sessions:S.sessions, rests:S.rests, gears:S.gears, bw:S.bw };
+      excl:S.excl, sessions:S.sessions, rests:S.rests, gears:S.gears, bw:S.bw,
+      custom:S.custom };
     var url, a;
     try{
       url=URL.createObjectURL(new Blob([JSON.stringify(payload)],{type:"application/json"}));
@@ -1339,6 +1369,10 @@
     }
     S.msg={t:"세션 "+S.sessions.length+"개를 workout-"+todayKey()+".json 으로 내보냈다.", w:0};
     render();
+  }
+  function validCustom(c){
+    return !!(c && typeof c.n==="string" && c.n.trim() && LIB[c.mg]
+      && (c.ty==="cmp"||c.ty==="iso"||c.ty==="con") && typeof c.inc==="number" && c.inc>0);
   }
   function pickImport(){
     var inp=document.createElement("input");
@@ -1378,7 +1412,14 @@
       if(d.rests && typeof d.rests==="object") S.rests=d.rests;
       if(d.gears && typeof d.gears==="object") S.gears=d.gears;
       if(typeof d.bw==="number") S.bw=d.bw;
-      rebuild(); save();
+      // 직접 추가한 종목은 이름으로 합친다. 기본 라이브러리와 이름이 겹치면 기본 쪽이 이긴다.
+      if(Array.isArray(d.custom)) d.custom.forEach(function(c){
+        if(!validCustom(c)) return;
+        var ci=S.custom.findIndex(function(x){ return x.n===c.n; });
+        if(ci>=0) S.custom[ci]=c;
+        else if(!libInfo(c.n)) S.custom.push(c);
+      });
+      applyCustom(); rebuild(); save();
       // 오늘 기록이 딸려 왔으면 그 Day 로 맞춰 준다
       var k2=todayKey(), td=S.sessions.filter(function(x){ return x.date===k2; });
       if(td.length){ S.dayId=td[td.length-1].dayId; S.focus=null; S.doneOpen=false; }
@@ -2088,6 +2129,33 @@
     S.routine.days.forEach(function(d){ d.ex.forEach(function(e){ m[e.id]=d.nm; }); });
     return m;
   }
+  // 부위 카드 맨 아래의 종목 추가 줄. 열면 이름 · 유형 · 기구를 받는다.
+  function addForm(mg){
+    var f=S.addOpen;
+    if(!f || f.mg!==mg)
+      return '<button class="cxopen" data-act="cxopen" data-mg="'+esc(mg)+'">+ 종목 추가</button>';
+    var con=(mg==="컨디셔닝"), g=G(), h='<div class="cxform">'
+      +'<input class="gnew cxn" type="text" maxlength="20" placeholder="종목 이름" value="'+esc(f.n||"")+'">';
+    if(!con){
+      h+='<div class="cxl">유형</div><div class="gchips">'
+        +[["cmp","컴파운드"],["iso","고립"]].map(function(o){
+          return '<button class="gchip" data-act="cxty" data-v="'+o[0]+'" data-on="'+(f.ty===o[0]?1:0)+'">'
+            +o[1]+'</button>'; }).join('')+'</div>'
+        +'<div class="cxl">기구</div><div class="gchips">'
+        +Object.keys(EQ).map(function(k){
+          return '<button class="gchip" data-act="cxeq" data-v="'+k+'" data-on="'+(f.eq===k?1:0)+'">'
+            +EQ[k].l+'</button>'; }).join('')+'</div>';
+      var step = f.eq==="db" ? "덤벨 랙 칸" : f.eq==="bw" ? "횟수만 기록" : "증량 "+nn(EQ[f.eq].inc)+"kg";
+      h+='<div class="cxhint">'+g.sets[f.ty]+'세트 × '+g.rep[f.ty]+'회 · 휴식 '+g.rest[f.ty]+'초 · '+step
+        +'<br>예비로 들어간다. 오늘 탭의 교체로 고르면 바로 쓸 수 있다.</div>';
+    } else {
+      h+='<div class="cxhint">10–14분 · 예비로 들어간다. 오늘 탭의 교체로 고르면 바로 쓸 수 있다.</div>';
+    }
+    if(f.err) h+='<div class="dmsg" data-w="1">'+esc(f.err)+'</div>';
+    h+='<div class="gadd"><button class="gaddb cxcancel" data-act="cxcancel">취소</button>'
+      +'<button class="gaddb" data-act="cxsave" style="flex:1">추가</button></div></div>';
+    return h;
+  }
   function vList(){
     var pl=placement(), h='<div class="wrap">';
     var all=0, off=0, on=0;
@@ -2123,11 +2191,14 @@
             var ex=S.excl.indexOf(x.n)>=0, where=pl[x.n];
             var meta = x.ty==="cmp"?"컴파운드":x.ty==="iso"?"고립":"인터벌";
             meta += ex ? " · 추천 안 함" : (where ? " · <b>"+where+"</b>" : " · 예비");
+            if(x.c) meta += " · 직접 추가";
             h+='<div class="lrow" data-off="'+(ex?1:0)+'"><div class="l">'
               +'<div class="nm">'+exLink(x.n)+'</div><div class="mt">'+meta+'</div></div>'
+              +(x.c?'<button class="cxdel" data-act="cxdel" data-n="'+esc(x.n)+'">삭제</button>':'')
               +'<button class="sw" data-on="'+(ex?0:1)+'" data-act="excl" data-n="'+esc(x.n)+'">'
               +'<i></i></button></div>';
           });
+          h+=addForm(mg);
         }
         h+='</div>';
       });
@@ -2262,6 +2333,12 @@
     if(S.rest.on) paintRest();
   }
 
+  root.addEventListener("keydown", function(ev){
+    if(ev.key==="Enter" && ev.target.classList && ev.target.classList.contains("cxn")){
+      ev.preventDefault();
+      var b=root.querySelector('[data-act="cxsave"]'); if(b) b.click();
+    }
+  });
   root.addEventListener("click", function(ev){
     var t=ev.target.closest("[data-act]"); if(!t) return;
     var a=t.dataset.act;
@@ -2319,6 +2396,34 @@
       rebuild(); save(); return render();
     }
     if(a==="acc"){ var mg=t.dataset.mg; S.acc[mg]=!S.acc[mg]; return render(); }
+    if(a==="cxopen"){ S.addOpen={mg:t.dataset.mg, n:"", ty:"iso", eq:"mc"}; return render(); }
+    if(a==="cxcancel"){ S.addOpen=null; return render(); }
+    if(a==="cxty" || a==="cxeq"){
+      if(!S.addOpen) return;
+      var cin=root.querySelector(".cxn"); if(cin) S.addOpen.n=cin.value;   // 다시 그리면 입력값이 날아간다
+      S.addOpen[a==="cxty"?"ty":"eq"]=t.dataset.v; S.addOpen.err=null;
+      return render();
+    }
+    if(a==="cxsave"){
+      var f=S.addOpen; if(!f) return;
+      var cin2=root.querySelector(".cxn"), cn=(cin2?cin2.value:"").trim().replace(/\s+/g," ");
+      f.n=cn;
+      if(!cn){ f.err="이름을 입력해라."; return render(); }
+      if(libInfo(cn)){ f.err="이미 라이브러리에 있는 이름이다."; return render(); }
+      S.custom.push(customOf(f.mg, f.ty, f.eq, cn));
+      applyCustom(); rebuild(); save();
+      S.addOpen=null; return render();
+    }
+    if(a==="cxdel"){
+      var dn2=t.dataset.n;
+      var has=S.sessions.some(function(x){ return x.e && x.e[dn2] && x.e[dn2].length; });
+      if(!window.confirm(dn2+" 을(를) 삭제한다."+(has?"\n기록은 남지만 진행 · 기록 탭 집계에서는 빠진다.":"")))
+        return;
+      S.custom=S.custom.filter(function(x){ return x.n!==dn2; });
+      delete DB[dn2]; delete BWONLY[dn2];
+      var xi=S.excl.indexOf(dn2); if(xi>=0) S.excl.splice(xi,1);
+      applyCustom(); rebuild(); save(); return render();
+    }
     if(a==="aux"){
       var kind=t.dataset.k, ai=+t.dataset.i, s=curSession(true);
       if(!s[kind]) s[kind]={};
@@ -2437,6 +2542,7 @@
   (async function(){
     var ex=await get("gym5:excl"), s=await get("gym5:sessions");
     var rt=await get("gym5:rests"), gr=await get("gym5:gears"), bwv=await get("gym5:bw");
+    var cu=await get("gym5:custom");
     try{ S.excl=ex?JSON.parse(ex):[]; }catch(e){ S.excl=[]; }
     try{ S.sessions=s?JSON.parse(s):[]; }catch(e){ S.sessions=[]; }
     try{ S.rests=rt?JSON.parse(rt):{}; }catch(e){ S.rests={}; }
@@ -2446,6 +2552,10 @@
     if(!S.rests || typeof S.rests!=="object") S.rests={};
     if(!S.gears || typeof S.gears!=="object") S.gears={};
     S.bw = (bwv && !isNaN(parseFloat(bwv))) ? parseFloat(bwv) : null;
+    try{ S.custom=cu?JSON.parse(cu):[]; }catch(e){ S.custom=[]; }
+    if(!Array.isArray(S.custom)) S.custom=[];
+    S.custom=S.custom.filter(validCustom);
+    applyCustom();
     rebuild();
     var k=todayKey(), td=S.sessions.filter(function(x){ return x.date===k; });
     // 오늘 이미 뭔가 기록했으면 그걸 이어서, 아니면 다음 차례 Day 를 띄운다
